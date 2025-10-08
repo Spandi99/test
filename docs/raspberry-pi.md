@@ -155,11 +155,14 @@ account:
 - **Username/Password:** values from `RADICALE_USERNAME` and `RADICALE_PASSWORD`
 
 The Radicale instance stores calendars under `/var/lib/radicale/collections`.
-Mount this directory to persist calendar data between container restarts. On
-startup the entrypoint automatically adjusts the owner and permissions of the
-Radicale storage and credentials file to match `RADICALE_RUN_USER`, preventing
-"permission denied" errors when switching between versions or after restoring
-backups.
+Mount this directory to persist calendar data between container restarts. The
+Radicale configuration now references the fully qualified
+`radicale.storage.filesystem` backend so the bundled Python environment always
+finds the storage plugin, even when entry-point discovery is restricted on the
+Pi. On startup the entrypoint automatically adjusts the owner and permissions
+of the Radicale storage and credentials file to match `RADICALE_RUN_USER`,
+preventing "permission denied" errors when switching between versions or after
+restoring backups.
 
 ## Stopping the container
 
