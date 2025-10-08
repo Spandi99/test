@@ -45,27 +45,40 @@ fi
 
 PG_VERSION="$(pg_config --version | awk '{print $2}' | cut -d. -f1)"
 PG_CLUSTER="main"
+PG_DATA_DIR="/etc/postgresql/${PG_VERSION}/${PG_CLUSTER}"
+PG_CONF_FILE="${PG_DATA_DIR}/postgresql.conf"
+PG_HBA_FILE="${PG_DATA_DIR}/pg_hba.conf"
 
 # Ensure PostgreSQL cluster exists
-if ! pg_lsclusters | awk '{print $1 " " $2}' | grep -q "${PG_VERSION} ${PG_CLUSTER}"; then
+if ! pg_lsclusters | awk 'NR > 1 {print $1 " " $2}' | grep -q "${PG_VERSION} ${PG_CLUSTER}"; then
   echo "Creating PostgreSQL cluster ${PG_VERSION}/${PG_CLUSTER}..."
   pg_createcluster "${PG_VERSION}" "${PG_CLUSTER}"
 fi
 
 # Configure PostgreSQL networking before starting the cluster
-CURRENT_PORT="$(pg_conftool "${PG_VERSION}" "${PG_CLUSTER}" show port | awk '{print $2}')"
-if [ "${CURRENT_PORT}" != "${POSTGRES_PORT}" ]; then
+if [ ! -f "${PG_CONF_FILE}" ]; then
+  echo "PostgreSQL configuration file ${PG_CONF_FILE} not found." >&2
+  exit 1
+fi
+
+if ! grep -Eq "^[[:space:]]*port[[:space:]]*=[[:space:]]*${POSTGRES_PORT}([[:space:]]|$)" "${PG_CONF_FILE}"; then
   echo "Configuring PostgreSQL to listen on port ${POSTGRES_PORT}..."
-  pg_conftool "${PG_VERSION}" "${PG_CLUSTER}" set port "${POSTGRES_PORT}"
+  if grep -Eq "^[#[:space:]]*port[[:space:]]*=" "${PG_CONF_FILE}"; then
+    sed -i "s/^[#[:space:]]*port[[:space:]]*=.*/port = ${POSTGRES_PORT}/" "${PG_CONF_FILE}"
+  else
+    printf '\nport = %s\n' "${POSTGRES_PORT}" >> "${PG_CONF_FILE}"
+  fi
 fi
 
-CURRENT_LISTEN="$(pg_conftool "${PG_VERSION}" "${PG_CLUSTER}" show listen_addresses | awk '{print $2}')"
-if [ "${CURRENT_LISTEN}" != "'0.0.0.0'" ]; then
+if ! grep -Eq "^[[:space:]]*listen_addresses[[:space:]]*=[[:space:]]*'0\\.0\\.0\\.0'" "${PG_CONF_FILE}"; then
   echo "Configuring PostgreSQL listen_addresses to 0.0.0.0..."
-  pg_conftool "${PG_VERSION}" "${PG_CLUSTER}" set listen_addresses "'0.0.0.0'"
+  if grep -Eq "^[#[:space:]]*listen_addresses[[:space:]]*=" "${PG_CONF_FILE}"; then
+    sed -i "s/^[#[:space:]]*listen_addresses[[:space:]]*=.*/listen_addresses = '0.0.0.0'/" "${PG_CONF_FILE}"
+  else
+    printf "\nlisten_addresses = '%s'\n" "0.0.0.0" >> "${PG_CONF_FILE}"
+  fi
 fi
 
-PG_HBA_FILE="/etc/postgresql/${PG_VERSION}/${PG_CLUSTER}/pg_hba.conf"
 if ! grep -qE "^host\\s+all\\s+all\\s+0\\.0\\.0\\.0/0\\s+scram-sha-256" "${PG_HBA_FILE}"; then
   echo "Updating pg_hba.conf to allow password access from any host..."
   printf '\nhost all all 0.0.0.0/0 scram-sha-256\n' >> "${PG_HBA_FILE}"

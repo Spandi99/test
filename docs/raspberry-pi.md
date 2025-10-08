@@ -77,6 +77,14 @@ docker compose \
   up -d --build
 ```
 
+> **Heads up:** If you previously ran an older Compose bundle that exposed a
+> separate `radicale` service, clean up the orphaned container first so ports
+> `5232` and `5432` are free:
+>
+> ```bash
+> docker compose -f docker-compose.pi.yml down --remove-orphans
+> ```
+
 Docker Compose automatically provisions named volumes for PostgreSQL,
 Radicale, and FluidCalendar's app state (`fluidcalendar_state`) so your
 database, calendars, and NextAuth secret survive rebuilds.
@@ -140,7 +148,8 @@ Use the following values inside the FluidCalendar UI when adding a CalDAV
 account:
 
 - **Server URL:** `http://radicale:5232` when using Docker Compose with the same
-  container name, or `http://localhost:5232` when accessing from the host
+  container name, `http://localhost:5232` from the Pi itself, or
+  `http://192.168.1.132:5232` from another device on your network
 - **Username/Password:** values from `RADICALE_USERNAME` and `RADICALE_PASSWORD`
 
 The Radicale instance stores calendars under `/var/lib/radicale/collections`.
