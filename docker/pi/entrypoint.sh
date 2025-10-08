@@ -13,6 +13,10 @@ RADICALE_USERS_FILE="${RADICALE_USERS_FILE:-/etc/radicale/users}"
 RADICALE_STORAGE="${RADICALE_STORAGE:-/var/lib/radicale/collections}"
 RADICALE_RUN_USER="${RADICALE_RUN_USER:-radicale}"
 RADICALE_RUN_GROUP="${RADICALE_RUN_GROUP:-${RADICALE_RUN_USER}}"
+RADICALE_BIN="${RADICALE_BIN:-/opt/radicale/bin/radicale}"
+RADICALE_LISTEN_HOST="${RADICALE_LISTEN_HOST:-127.0.0.1}"
+RADICALE_LISTEN_PORT="${RADICALE_LISTEN_PORT:-5232}"
+RADICALE_START_TIMEOUT="${RADICALE_START_TIMEOUT:-30}"
 
 APP_STATE_DIR="${APP_STATE_DIR:-/var/lib/fluidcalendar}"
 NEXTAUTH_SECRET_FILE="${NEXTAUTH_SECRET_FILE:-${APP_STATE_DIR}/nextauth_secret}"
@@ -147,13 +151,48 @@ if id "${RADICALE_RUN_USER}" >/dev/null 2>&1; then
   fi
 fi
 
-# Start Radicale in background
-if id "${RADICALE_RUN_USER}" >/dev/null 2>&1 && [ "$(id -un)" != "${RADICALE_RUN_USER}" ]; then
-  su -s /bin/sh "${RADICALE_RUN_USER}" -c "radicale --config '${RADICALE_CONFIG}'" &
+start_radicale() {
+  local -a radicale_cmd=("${RADICALE_BIN}" "--config" "${RADICALE_CONFIG}")
+
+  if [ ! -x "${RADICALE_BIN}" ]; then
+    echo "Radicale binary ${RADICALE_BIN} is not executable." >&2
+    return 1
+  fi
+
+  if id "${RADICALE_RUN_USER}" >/dev/null 2>&1 && [ "$(id -un)" != "${RADICALE_RUN_USER}" ]; then
+    if command -v runuser >/dev/null 2>&1; then
+      runuser -u "${RADICALE_RUN_USER}" -- "${radicale_cmd[@]}" &
+    else
+      su -s /bin/sh "${RADICALE_RUN_USER}" -c "$(printf '%q ' "${radicale_cmd[@]}")" &
+    fi
+  else
+    "${radicale_cmd[@]}" &
+  fi
+
   RADICALE_PID=$!
-else
-  radicale --config "${RADICALE_CONFIG}" &
-  RADICALE_PID=$!
+
+  for _ in $(seq 1 "${RADICALE_START_TIMEOUT}"); do
+    if nc -z "${RADICALE_LISTEN_HOST}" "${RADICALE_LISTEN_PORT}" >/dev/null 2>&1; then
+      echo "Radicale is listening on ${RADICALE_LISTEN_HOST}:${RADICALE_LISTEN_PORT}."
+      return 0
+    fi
+
+    if ! kill -0 "${RADICALE_PID}" >/dev/null 2>&1; then
+      echo "Radicale exited before opening ${RADICALE_LISTEN_HOST}:${RADICALE_LISTEN_PORT}." >&2
+      wait "${RADICALE_PID}" || true
+      return 1
+    fi
+
+    sleep 1
+  done
+
+  echo "Timed out waiting for Radicale to start on ${RADICALE_LISTEN_HOST}:${RADICALE_LISTEN_PORT}." >&2
+  return 1
+}
+
+if ! start_radicale; then
+  echo "Radicale failed to start. Exiting." >&2
+  exit 1
 fi
 
 # Wait for PostgreSQL to accept connections

@@ -77,6 +77,10 @@ ENV POSTGRES_PORT=5432
 ENV RADICALE_USERNAME=fluid
 ENV RADICALE_PASSWORD=fluid
 ENV RADICALE_BASE_URL=http://localhost:5232
+ENV RADICALE_BIN=/opt/radicale/bin/radicale
+ENV RADICALE_LISTEN_HOST=127.0.0.1
+ENV RADICALE_LISTEN_PORT=5232
+ENV RADICALE_START_TIMEOUT=30
 ENV DATABASE_URL=postgresql://fluid:fluid@127.0.0.1:5432/fluid_calendar?schema=public
 
 ENTRYPOINT ["/usr/local/bin/pidev-entrypoint.sh"]

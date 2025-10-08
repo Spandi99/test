@@ -139,6 +139,10 @@ user on first start. The following environment variables control the defaults:
 | `RADICALE_BASE_URL` | Internal CalDAV base URL used by the app | `http://localhost:5232` |
 | `RADICALE_RUN_USER` | Unix user the Radicale service runs as (also owns `/var/lib/radicale`) | `radicale` |
 | `RADICALE_RUN_GROUP` | Group paired with `RADICALE_RUN_USER` | `radicale` |
+| `RADICALE_BIN` | Absolute path to the Radicale executable inside the container | `/opt/radicale/bin/radicale` |
+| `RADICALE_LISTEN_HOST` | Hostname the health check probes while starting Radicale | `127.0.0.1` |
+| `RADICALE_LISTEN_PORT` | Port the entrypoint waits on before continuing startup | `5232` |
+| `RADICALE_START_TIMEOUT` | Seconds to wait for Radicale to open the listening port | `30` |
 | `DATABASE_URL` | Prisma connection string (auto-generated if omitted) | `postgresql://fluid:fluid@127.0.0.1:5432/fluid_calendar?schema=public` |
 | `NEXTAUTH_URL` | Public URL for OAuth callbacks and NextAuth | `http://192.168.1.132:3000` |
 | `NEXT_PUBLIC_APP_URL` | Public URL exposed to the browser | `http://192.168.1.132:3000` |
@@ -159,10 +163,15 @@ Mount this directory to persist calendar data between container restarts. The
 Radicale configuration now references the fully qualified
 `radicale.storage.filesystem` backend so the bundled Python environment always
 finds the storage plugin, even when entry-point discovery is restricted on the
-Pi. On startup the entrypoint automatically adjusts the owner and permissions
-of the Radicale storage and credentials file to match `RADICALE_RUN_USER`,
-preventing "permission denied" errors when switching between versions or after
-restoring backups.
+Pi. During startup the entrypoint now launches Radicale via
+`/opt/radicale/bin/radicale`, waits for the service to open
+`${RADICALE_LISTEN_HOST}:${RADICALE_LISTEN_PORT}`, and bails out early if the
+process exits unexpectedly. The health check output appears in the container
+logs so you can immediately spot configuration or permission problems before
+the Node.js server starts. The entrypoint also continues to repair the owner
+and permissions of the Radicale storage and credentials file to match
+`RADICALE_RUN_USER`, preventing "permission denied" errors when switching
+between versions or after restoring backups.
 
 ## Stopping the container
 
