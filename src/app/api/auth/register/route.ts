@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { hash } from "bcrypt";
+import bcrypt from "bcrypt";
 
 import { isPublicSignupEnabled } from "@/lib/auth/public-signup";
 import { logger } from "@/lib/logger";
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Hash the password
-    const hashedPassword = await hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     // Create the user
     const user = await prisma.user.create({

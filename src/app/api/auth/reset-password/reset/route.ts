@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { hash } from "bcrypt";
+import bcrypt from "bcrypt";
 import { z } from "zod";
 
 import { logger } from "@/lib/logger";
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Hash the new password
-    const hashedPassword = await hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     // Update the password and mark token as used
     await prisma.$transaction([

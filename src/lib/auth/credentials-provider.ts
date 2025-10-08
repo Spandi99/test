@@ -1,4 +1,4 @@
-import { compare } from "bcrypt";
+import bcrypt from "bcrypt";
 
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
@@ -53,7 +53,10 @@ export async function authenticateUser(email: string, password: string) {
     }
 
     // Compare the provided password with the stored hash
-    const passwordMatch = await compare(password, credentialsAccount.id_token);
+    const passwordMatch = await bcrypt.compare(
+      password,
+      credentialsAccount.id_token
+    );
 
     if (!passwordMatch) {
       logger.warn(
