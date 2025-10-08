@@ -25,6 +25,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       python3 \
       python3-pip \
+      python3-venv \
       postgresql \
       postgresql-client \
       postgresql-contrib \
@@ -36,7 +37,10 @@ RUN apt-get update && \
       ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install --no-cache-dir radicale
+RUN python3 -m venv /opt/radicale \
+    && /opt/radicale/bin/pip install --no-cache-dir --upgrade pip \
+    && /opt/radicale/bin/pip install --no-cache-dir radicale \
+    && ln -s /opt/radicale/bin/radicale /usr/local/bin/radicale
 
 COPY docker/pi/radicale.config /etc/radicale/config
 RUN mkdir -p /var/lib/radicale/collections
