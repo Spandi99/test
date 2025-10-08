@@ -153,9 +153,56 @@ function mergeDescription(
   return filtered.map((section) => section.trim()).join("\n\n");
 }
 
+function normalizeIcalContent(raw: string): string {
+  const unixNewlines = raw.replace(/\r\n?/g, "\n");
+  const lines = unixNewlines.split("\n");
+  const normalized: string[] = [];
+
+  for (const line of lines) {
+    if (!line.length) {
+      normalized.push(line);
+      continue;
+    }
+
+    if (/^[ \t]/.test(line)) {
+      if (normalized.length) {
+        normalized[normalized.length - 1] += line.slice(1);
+        continue;
+      }
+
+      normalized.push(line.trimStart());
+      continue;
+    }
+
+    if (!line.includes(":") && !line.includes(";")) {
+      if (normalized.length) {
+        const previous = normalized[normalized.length - 1];
+        const trimmed = line.trim();
+        const needsSpace =
+          trimmed.length > 0 &&
+          previous.length > 0 &&
+          !previous.endsWith(" ") &&
+          !previous.endsWith("\\") &&
+          !previous.endsWith("=");
+        normalized[normalized.length - 1] =
+          previous + (needsSpace ? " " : "") + trimmed;
+        continue;
+      }
+
+      normalized.push(line.trim());
+      continue;
+    }
+
+    normalized.push(line);
+  }
+
+  return normalized.join("\n");
+}
+
 function parseIcalData(icalData: string): ParsedCalendar {
   try {
-    const jcalData = ICAL.parse(icalData);
+    const normalized = normalizeIcalContent(icalData);
+    const jcalData = ICAL.parse(normalized);
     const vcalendar = new ICAL.Component(jcalData);
     const vevents = vcalendar.getAllSubcomponents("vevent");
 
