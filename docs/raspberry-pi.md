@@ -172,13 +172,48 @@ PostgreSQL.
 
 ## Update to a newer version later on
 
-When new commits land upstream, pull the updates and rebuild:
+When new commits land upstream, you can either use Git and Docker Compose
+directly:
 
 ```bash
 cd /path/to/fluid-calendar
 git pull
 docker compose -f docker-compose.pi.yml --env-file .env.pi up -d --build
 ```
+
+or leverage the helper functions in `scripts/pi-version-manager.sh` to switch
+between tagged releases without remembering the exact commands.
+
+### Optional: Version switching helpers
+
+To make it easy to jump between versions on the Raspberry Pi, source the helper
+functions once per shell session:
+
+```bash
+cd /path/to/fluid-calendar
+source scripts/pi-version-manager.sh
+```
+
+You can also add the `source` command to your shell profile (e.g. `~/.bashrc`)
+to load the helpers automatically when you SSH into the Pi.
+
+Available commands:
+
+| Command | Description |
+| --- | --- |
+| `fc_pi_list_versions` | Show all available Git tags in ascending order. |
+| `fc_pi_current_version` | Print the currently checked-out branch or tag. |
+| `fc_pi_use_version <ref>` | Checkout the given branch/tag, remove orphaned containers, and rebuild/start the Pi stack. |
+| `fc_pi_next_version` | Switch to the next tag (newer version) and rebuild. |
+| `fc_pi_previous_version` | Switch to the previous tag (older version) and rebuild. |
+| `fc_pi_rebuild_current` | Rebuild and restart the currently checked-out version. |
+| `fc_pi_status` | Show current repo/Compose status for the Pi stack. |
+
+All commands automatically run `docker compose down --remove-orphans` before
+starting the stack again so outdated containers are cleaned up. By default they
+expect `.env.pi` to exist, but you can override paths via the environment
+variables `FC_PI_REPO_DIR`, `FC_PI_COMPOSE_FILE`, `FC_PI_ENV_FILE`, and
+`FC_PI_DOCKER_COMPOSE` before sourcing the script.
 
 Docker Compose will recreate the container while keeping the PostgreSQL and
 Radicale volumes intact.
