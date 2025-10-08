@@ -57,6 +57,13 @@ export default function TasksPage() {
     fetchProjects();
   }, [fetchTasks, fetchTags, fetchProjects]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.innerWidth < 768) {
+      setViewMode("list");
+    }
+  }, [setViewMode]);
+
   const handleCreateTask = async (task: NewTask) => {
     await createTask(task);
     await fetchTasks();
@@ -148,10 +155,10 @@ export default function TasksPage() {
         <div className="flex min-w-0 flex-1 flex-col" data-task-page>
           <div className="border-b border-border px-4 py-4 sm:px-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-1 items-center justify-between gap-3 md:flex-none">
+              <div className="flex w-full flex-col items-start gap-3 sm:flex-1 sm:flex-row sm:items-center sm:justify-between md:flex-none">
                 <div className="flex items-center gap-4">
                   <h1 className="text-2xl font-bold text-foreground">Tasks</h1>
-                  <div className="flex items-center gap-1 rounded-lg bg-muted p-1">
+                  <div className="hidden items-center gap-1 rounded-lg bg-muted p-1 sm:flex">
                     <button
                       onClick={() => setViewMode("list")}
                       className={cn(

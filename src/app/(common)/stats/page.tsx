@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   AVATAR_PRESETS,
@@ -17,6 +17,7 @@ import { StatsHistory } from "@/components/stats/StatsHistory";
 import { StatsProgress } from "@/components/stats/StatsProgress";
 import { showXpToast } from "@/components/stats/showXpToast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { StatKey } from "@/types/stats";
 
@@ -83,6 +84,18 @@ export default function StatsPage() {
     setAvatar(presetId);
   };
 
+  const [isMobile, setIsMobile] = useState(false);
+  const [mobileTab, setMobileTab] = useState<"daily" | "history">("daily");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mediaQuery = window.matchMedia("(max-width: 767px)");
+    const update = () => setIsMobile(mediaQuery.matches);
+    update();
+    mediaQuery.addEventListener("change", update);
+    return () => mediaQuery.removeEventListener("change", update);
+  }, []);
+
   return (
     <div className="relative flex h-full flex-col overflow-y-auto bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.25),_transparent_60%)]" />
@@ -97,7 +110,7 @@ export default function StatsPage() {
                 Sammle XP, forme deine Werte und halte deine Streak am Leben.
               </p>
             </CardHeader>
-            <CardContent className="grid gap-6 xl:grid-cols-[260px_minmax(0,1fr)] xl:items-center">
+            <CardContent className="grid gap-8 pb-12 xl:grid-cols-[260px_minmax(0,1fr)] xl:items-center">
               <div className="mx-auto flex max-w-xs justify-center">
                 <StatsAvatar
                   avatar={activeAvatar}
@@ -235,16 +248,50 @@ export default function StatsPage() {
             </CardContent>
           </Card>
         </div>
-
-        <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-          <StatsDailyActivities
-            activities={todaysActivities}
-            completedIds={completedToday}
-            weekdayLabel={weekdayLabel}
-            onComplete={handleCompleteActivity}
-          />
-          <StatsHistory events={history} />
-        </div>
+        {isMobile ? (
+          <Tabs
+            value={mobileTab}
+            onValueChange={(value) => setMobileTab(value as "daily" | "history")}
+            className="w-full"
+          >
+            <TabsList className="grid w-full grid-cols-2 rounded-xl border border-white/10 bg-white/5 p-1">
+              <TabsTrigger
+                value="daily"
+                className="rounded-lg text-sm font-semibold text-slate-200 data-[state=active]:bg-slate-900/60 data-[state=active]:text-white"
+              >
+                Daily Quests
+              </TabsTrigger>
+              <TabsTrigger
+                value="history"
+                className="rounded-lg text-sm font-semibold text-slate-200 data-[state=active]:bg-slate-900/60 data-[state=active]:text-white"
+              >
+                Ereignisse
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="daily" className="mt-4 focus-visible:outline-none">
+              <StatsDailyActivities
+                activities={todaysActivities}
+                completedIds={completedToday}
+                weekdayLabel={weekdayLabel}
+                onComplete={handleCompleteActivity}
+                compact
+              />
+            </TabsContent>
+            <TabsContent value="history" className="mt-4 focus-visible:outline-none">
+              <StatsHistory events={history} compact />
+            </TabsContent>
+          </Tabs>
+        ) : (
+          <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+            <StatsDailyActivities
+              activities={todaysActivities}
+              completedIds={completedToday}
+              weekdayLabel={weekdayLabel}
+              onComplete={handleCompleteActivity}
+            />
+            <StatsHistory events={history} />
+          </div>
+        )}
       </div>
     </div>
   );

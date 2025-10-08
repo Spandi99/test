@@ -185,7 +185,7 @@ export const StatsAvatar = memo(function StatsAvatar({
   const streakLabel = streak > 0 ? `${streak} Tage` : "Bereit für den Start";
 
   return (
-    <div className="relative flex h-full w-full items-center justify-center">
+    <div className="relative flex w-full max-w-[18rem] items-center justify-center pb-12 sm:max-w-[20rem]">
       <div className="pointer-events-none absolute inset-0 -z-10">
         <div
           className={cn(
@@ -198,12 +198,12 @@ export const StatsAvatar = memo(function StatsAvatar({
 
       <div
         className={cn(
-          "relative flex w-72 flex-col items-center overflow-hidden rounded-[2.5rem] border border-white/10 bg-gradient-to-br shadow-[0_35px_120px_-45px_rgba(0,0,0,0.65)]",
+          "relative flex w-full flex-col items-center overflow-hidden rounded-[2.5rem] border border-white/10 bg-gradient-to-br shadow-[0_35px_120px_-45px_rgba(0,0,0,0.65)]",
           avatar.layers.background
         )}
       >
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.28),_transparent_60%)]" />
-        <div className="relative flex w-full flex-col items-center gap-8 px-8 pb-10 pt-12 text-center">
+        <div className="relative flex w-full flex-col items-center gap-6 px-6 pb-14 pt-12 text-center sm:gap-8">
           <div className="relative flex h-40 w-full items-end justify-center">
             <div className="relative flex h-40 w-36 flex-col items-center justify-start">
               {renderCompanion(avatar.layers.companion, avatar.layers.accentColor)}
@@ -289,7 +289,7 @@ export const StatsAvatar = memo(function StatsAvatar({
         </div>
       </div>
 
-      <div className="absolute -bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/70 px-5 py-2 text-xs font-semibold text-white shadow-[0_20px_40px_-25px_rgba(0,0,0,0.75)] backdrop-blur">
+      <div className="absolute -bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/70 px-4 py-2 text-xs font-semibold text-white shadow-[0_20px_40px_-25px_rgba(0,0,0,0.75)] backdrop-blur sm:-bottom-4">
         <span>🔥 Streak</span>
         <span className="text-sm text-primary-200">{streakLabel}</span>
       </div>

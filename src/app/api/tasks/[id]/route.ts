@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { Task } from "@prisma/client";
 import { RRule } from "rrule";
 
+import { Prisma } from "@prisma/client";
+
 import { authenticateRequest } from "@/lib/auth/api-auth";
 import { newDate } from "@/lib/date-utils";
 import { logger } from "@/lib/logger";
@@ -93,7 +95,14 @@ export async function PUT(
     logger.info(`Update payload for task ${id}`, { payload: json }, LOG_SOURCE);
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { tagIds, project, projectId, userId: _, ...updates } = json;
+    const { tagIds, project, projectId, userId: _, metadata, ...updates } = json;
+
+    const metadataPayload =
+      metadata === undefined
+        ? undefined
+        : metadata === null
+          ? Prisma.JsonNull
+          : (metadata as Prisma.JsonValue);
 
     // Set completedAt when task is marked as completed
     if (
@@ -235,6 +244,7 @@ export async function PUT(
       },
       data: {
         ...updates,
+        ...(metadata !== undefined && { metadata: metadataPayload }),
         ...(tagIds && {
           tags: {
             set: [], // First disconnect all tags

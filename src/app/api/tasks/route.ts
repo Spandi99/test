@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { RRule } from "rrule";
 
+import { Prisma } from "@prisma/client";
+
 import { authenticateRequest } from "@/lib/auth/api-auth";
 import { newDate } from "@/lib/date-utils";
 import { logger } from "@/lib/logger";
@@ -103,7 +105,7 @@ export async function POST(request: NextRequest) {
     const userId = auth.userId;
 
     const json = await request.json();
-    const { tagIds, recurrenceRule, ...taskData } = json;
+    const { tagIds, recurrenceRule, metadata, ...taskData } = json;
 
     // Normalize and validate recurrence rule if provided
     const standardizedRecurrenceRule = recurrenceRule
@@ -139,6 +141,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const metadataPayload =
+      metadata === undefined
+        ? undefined
+        : metadata === null
+          ? Prisma.JsonNull
+          : (metadata as Prisma.JsonValue);
+
     const task = await prisma.task.create({
       data: {
         ...taskData,
@@ -146,6 +155,7 @@ export async function POST(request: NextRequest) {
         userId,
         isRecurring: !!recurrenceRule,
         recurrenceRule: standardizedRecurrenceRule,
+        ...(metadata !== undefined && { metadata: metadataPayload }),
         ...(Array.isArray(tagIds) && tagIds.length > 0
           ? {
               tags: {

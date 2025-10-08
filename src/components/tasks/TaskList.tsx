@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-import { HiX } from "react-icons/hi";
+import { HiCheck, HiPencil, HiTrash, HiX } from "react-icons/hi";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -13,7 +13,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-import { newDate } from "@/lib/date-utils";
+import { format, newDate } from "@/lib/date-utils";
+import { cn } from "@/lib/utils";
 
 import { useProjectStore } from "@/store/project";
 import { useTaskListViewSettings } from "@/store/taskListViewSettings";
@@ -22,6 +23,7 @@ import { EnergyLevel, Task, TaskStatus, TimePreference } from "@/types/task";
 
 import { SortableHeader, StatusFilter, TaskRow } from "./components";
 import { formatEnumValue } from "./utils/task-list-utils";
+import { Badge } from "../ui/badge";
 
 interface TaskListProps {
   tasks: Task[];
@@ -216,7 +218,7 @@ export function TaskList({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="mb-4 flex items-center gap-4">
+      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
         <StatusFilter
           value={status || []}
           onChange={(value) => setFilters({ status: value })}
@@ -231,7 +233,7 @@ export function TaskList({
             })
           }
         >
-          <SelectTrigger className="h-9 w-[140px]">
+          <SelectTrigger className="h-9 w-full sm:w-[140px]">
             <SelectValue placeholder="All Energy" />
           </SelectTrigger>
           <SelectContent>
@@ -253,7 +255,7 @@ export function TaskList({
             })
           }
         >
-          <SelectTrigger className="h-9 w-[140px]">
+          <SelectTrigger className="h-9 w-full sm:w-[140px]">
             <SelectValue placeholder="All Times" />
           </SelectTrigger>
           <SelectContent>
@@ -266,21 +268,21 @@ export function TaskList({
           </SelectContent>
         </Select>
 
-        <div className="flex flex-1 gap-2">
+        <div className="flex flex-1 flex-col gap-2 sm:flex-row">
           <Input
             value={search || ""}
             onChange={(e) =>
               setFilters({ search: e.target.value || undefined })
             }
             placeholder="Search tasks..."
-            className="h-9"
+              className="h-9"
           />
           {hasActiveFilters && (
             <Button
               variant="outline"
               size="sm"
               onClick={resetFilters}
-              className="h-9"
+              className="h-9 sm:w-auto"
             >
               <HiX className="mr-1 h-4 w-4" />
               Clear Filters
@@ -307,7 +309,7 @@ export function TaskList({
 
       <div className="flex-1 rounded-lg border bg-background">
         <div
-          className="overflow-auto"
+          className="hidden overflow-auto md:block"
           style={{ maxHeight: "calc(100vh - 250px)" }}
         >
           <table className="min-w-full divide-y divide-border">
@@ -421,6 +423,112 @@ export function TaskList({
             </div>
           )}
         </div>
+        <div className="flex flex-col gap-3 p-3 md:hidden">
+          {sortedTasks.map((task) => (
+            <MobileTaskCard
+              key={task.id}
+              task={task}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onStatusChange={onStatusChange}
+            />
+          ))}
+          {sortedTasks.length === 0 && (
+            <div className="rounded-lg border border-dashed border-muted-foreground/30 p-6 text-center text-sm text-muted-foreground">
+              Keine Tasks für die aktuellen Filter gefunden.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface MobileTaskCardProps {
+  task: Task;
+  onEdit: (task: Task) => void;
+  onDelete: (taskId: string) => void;
+  onStatusChange: (taskId: string, status: TaskStatus) => void;
+}
+
+function MobileTaskCard({ task, onEdit, onDelete, onStatusChange }: MobileTaskCardProps) {
+  const isCompleted = task.status === TaskStatus.COMPLETED;
+  const dueDate = task.dueDate ? newDate(task.dueDate) : null;
+
+  return (
+    <div className="rounded-xl border border-border/70 bg-background/80 p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1">
+          <h4 className="text-base font-semibold text-foreground">{task.title}</h4>
+          {task.description && (
+            <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
+              {task.description}
+            </p>
+          )}
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide">
+              {formatEnumValue(task.status)}
+            </span>
+            {task.projectId && task.project && (
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                {task.project.name}
+              </span>
+            )}
+            {dueDate && <span>Fällig {format(dueDate, "dd.MM.yy")}</span>}
+          </div>
+          {task.tags.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {task.tags.map((tag) => (
+                <Badge
+                  key={tag.id}
+                  variant="outline"
+                  className="border-muted-foreground/30 text-[11px] font-medium"
+                  style={{
+                    borderColor: tag.color ?? undefined,
+                    color: tag.color ?? undefined,
+                  }}
+                >
+                  {tag.name}
+                </Badge>
+              ))}
+            </div>
+          )}
+        </div>
+        <Button
+          size="sm"
+          variant={isCompleted ? "secondary" : "default"}
+          className={cn(
+            "flex items-center gap-1",
+            isCompleted && "text-green-600 dark:text-green-400"
+          )}
+          onClick={() =>
+            onStatusChange(
+              task.id,
+              isCompleted ? TaskStatus.TODO : TaskStatus.COMPLETED
+            )
+          }
+        >
+          <HiCheck className="h-4 w-4" />
+          {isCompleted ? "Erledigt" : "Abschließen"}
+        </Button>
+      </div>
+      <div className="mt-4 flex items-center justify-end gap-2">
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => onEdit(task)}
+          className="flex items-center gap-1"
+        >
+          <HiPencil className="h-4 w-4" /> Bearbeiten
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="flex items-center gap-1 text-destructive hover:text-destructive"
+          onClick={() => onDelete(task.id)}
+        >
+          <HiTrash className="h-4 w-4" /> Löschen
+        </Button>
       </div>
     </div>
   );
