@@ -83,7 +83,7 @@ export function FeedManager() {
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => handleSyncFeed(feed.id)}
-                  disabled={syncingFeeds.has(feed.id)}
+                  disabled={feed.type === "LOCAL" || syncingFeeds.has(feed.id)}
                   className={cn(
                     "rounded-full p-1.5 text-muted-foreground hover:text-foreground",
                     "hover:bg-muted/50 focus:outline-none focus:ring-2",

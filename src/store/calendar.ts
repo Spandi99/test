@@ -88,7 +88,7 @@ interface CalendarStore extends CalendarState {
   addFeed: (
     name: string,
     url: string,
-    type: "GOOGLE" | "OUTLOOK" | "CALDAV",
+    type: "GOOGLE" | "OUTLOOK" | "CALDAV" | "LOCAL",
     color?: string
   ) => Promise<void>;
   removeFeed: (id: string) => Promise<void>;
@@ -280,7 +280,7 @@ export const useCalendarStore = create<CalendarStore>()((set, get) => ({
       set((state) => ({ feeds: [...state.feeds, feed] }));
 
       // Sync the feed's events
-      if (url) {
+      if (url && type !== "LOCAL") {
         await get().syncFeed(id);
       }
     } catch (error) {
@@ -778,6 +778,11 @@ export const useCalendarStore = create<CalendarStore>()((set, get) => ({
       // Get the feed to determine its type
       const feed = get().feeds.find((f) => f.id === feedId);
       if (!feed) throw new Error("Calendar not found");
+
+      if (feed.type === "LOCAL") {
+        // Local calendars are managed directly in the database and don't support remote sync
+        return;
+      }
 
       const endpoint =
         feed.type === "GOOGLE"

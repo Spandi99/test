@@ -9,6 +9,7 @@ import { AccountManager } from "@/components/settings/AccountManager";
 import { AutoScheduleSettings } from "@/components/settings/AutoScheduleSettings";
 import { CalendarSettings } from "@/components/settings/CalendarSettings";
 import { ImportExportSettings } from "@/components/settings/ImportExportSettings";
+import { IcalImportSettings } from "@/components/settings/IcalImportSettings";
 import { LogViewer } from "@/components/settings/LogViewer";
 import { NotificationSettings } from "@/components/settings/NotificationSettings";
 import { SystemSettings } from "@/components/settings/SystemSettings";
@@ -51,6 +52,7 @@ type SettingsTab =
   | "user-management"
   | "waitlist"
   | "import-export"
+  | "ical-import"
   | "admin-dashboard"
   | "notifications";
 
@@ -73,6 +75,7 @@ export default function SettingsPage() {
       { id: "task-sync", label: "Task Sync" },
       { id: "notifications", label: "Notifications" },
       { id: "import-export", label: "Import/Export" },
+      { id: "ical-import", label: "iCal Import" },
     ] as const;
 
     // Add admin-only tabs
@@ -118,6 +121,7 @@ export default function SettingsPage() {
         "user-management",
         "waitlist",
         "import-export",
+        "ical-import",
         "admin-dashboard",
         "notifications",
       ];
@@ -199,6 +203,8 @@ export default function SettingsPage() {
         return <UserManagement />;
       case "import-export":
         return <ImportExportSettings />;
+      case "ical-import":
+        return <IcalImportSettings />;
       case "waitlist":
         return (
           <Suspense fallback={<div>Loading...</div>}>
