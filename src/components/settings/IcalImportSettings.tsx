@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Loader2, Upload, Link as LinkIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -29,6 +29,7 @@ interface ImportResponse {
   feedId: string;
   imported: number;
   feedName: string;
+  skipped?: number;
 }
 
 export function IcalImportSettings() {
@@ -43,12 +44,20 @@ export function IcalImportSettings() {
   const feeds = useCalendarStore((state) => state.feeds);
   const refreshEvents = useCalendarStore((state) => state.refreshEvents);
   const refreshFeeds = useCalendarStore((state) => state.refreshFeeds);
+  const loadFeedsOnceRef = useRef(false);
 
   const importableFeeds = useMemo(
     () =>
       feeds.filter((feed) => feed.type === "CALDAV" || feed.type === "LOCAL"),
     [feeds]
   );
+
+  useEffect(() => {
+    if (!loadFeedsOnceRef.current) {
+      loadFeedsOnceRef.current = true;
+      void refreshFeeds();
+    }
+  }, [refreshFeeds]);
 
   const triggerImport = useCallback(
     async (payload: { icalData?: string; icalUrl?: string }) => {
@@ -80,8 +89,12 @@ export function IcalImportSettings() {
 
         const data = (await response.json()) as ImportResponse;
         setLastImported(data);
+        const skippedInfo =
+          typeof data.skipped === "number" && data.skipped > 0
+            ? ` ${data.skipped} Termine konnten nicht übernommen werden.`
+            : "";
         toast.success(
-          `Kalender „${data.feedName}“ wurde importiert. ${data.imported} Termine hinzugefügt.`
+          `Kalender „${data.feedName}“ wurde importiert. ${data.imported} Termine hinzugefügt.${skippedInfo}`
         );
 
         if (targetFeedId === "new") {
@@ -158,17 +171,28 @@ export function IcalImportSettings() {
               <SelectTrigger id="target-feed">
                 <SelectValue placeholder="Kalender auswählen" />
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="new">Neuen lokalen Kalender anlegen</SelectItem>
-                {importableFeeds.map((feed) => (
-                  <SelectItem key={feed.id} value={feed.id}>
-                    {feed.name}
-                    {feed.type === "CALDAV" ? " (CalDAV)" : " (Lokal)"}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-sm text-muted-foreground">
+            <SelectContent>
+              <SelectItem value="new">Neuen lokalen Kalender anlegen</SelectItem>
+              {importableFeeds.map((feed) => (
+                <SelectItem key={feed.id} value={feed.id}>
+                  <span className="flex items-center gap-2">
+                    {feed.color ? (
+                      <span
+                        aria-hidden
+                        className="h-2 w-2 rounded-full"
+                        style={{ backgroundColor: feed.color }}
+                      />
+                    ) : null}
+                    <span className="truncate">
+                      {feed.name}
+                      {feed.type === "CALDAV" ? " (CalDAV)" : " (Lokal)"}
+                    </span>
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-sm text-muted-foreground">
               Wählen Sie einen bestehenden CalDAV- oder lokalen Kalender aus,
               oder legen Sie einen neuen lokalen Kalender für den Import an.
             </p>
@@ -250,7 +274,7 @@ export function IcalImportSettings() {
             </div>
             <p className="text-sm text-muted-foreground">
               Unterstützt Standard-iCal-Dateien (.ics). Die Termine werden in
-              einen neuen lokalen Kalender importiert.
+              den ausgewählten Kalender übernommen.
             </p>
           </div>
 
@@ -261,6 +285,12 @@ export function IcalImportSettings() {
                 {" "}
                 Terminen.
               </p>
+              {typeof lastImported.skipped === "number" && lastImported.skipped > 0 ? (
+                <p className="text-muted-foreground">
+                  {lastImported.skipped} Einträge konnten nicht importiert werden
+                  (siehe Protokoll).
+                </p>
+              ) : null}
             </div>
           )}
         </CardContent>
