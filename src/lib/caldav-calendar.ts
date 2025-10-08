@@ -19,6 +19,21 @@ import {
 
 const LOG_SOURCE = "CalDAVCalendar";
 
+function buildEventUrl(calendarPath: string, eventId: string): {
+  normalizedCalendarPath: string;
+  eventUrl: string;
+} {
+  const normalizedCalendarPath = calendarPath.endsWith("/")
+    ? calendarPath.slice(0, -1)
+    : calendarPath;
+  const safeEventId = encodeURIComponent(eventId);
+
+  return {
+    normalizedCalendarPath,
+    eventUrl: `${normalizedCalendarPath}/${safeEventId}.ics`,
+  };
+}
+
 /**
  * Service for interacting with CalDAV servers
  */
@@ -532,13 +547,10 @@ export class CalDAVCalendarService {
       const client = await this.getClient();
 
       // For Fastmail compatibility, we'll use a PUT request to a specific URL
-      // Ensure the calendar path doesn't have a trailing slash
-      const normalizedCalendarPath = calendarPath.endsWith("/")
-        ? calendarPath.slice(0, -1)
-        : calendarPath;
-
-      // Create a URL for the event using the externalEventId
-      const eventUrl = `${normalizedCalendarPath}/${externalEventId}.ics`;
+      const { normalizedCalendarPath, eventUrl } = buildEventUrl(
+        calendarPath,
+        externalEventId
+      );
 
       // Generate the iCalendar data
       const icalData = this.convertToICalendar({
@@ -741,13 +753,10 @@ export class CalDAVCalendarService {
       const client = await this.getClient();
 
       // For Fastmail compatibility, we'll use a DELETE request to a specific URL
-      // Ensure the calendar path doesn't have a trailing slash
-      const normalizedCalendarPath = calendarPath.endsWith("/")
-        ? calendarPath.slice(0, -1)
-        : calendarPath;
-
-      // Create a URL for the event using the externalEventId
-      const eventUrl = `${normalizedCalendarPath}/${externalEventId}.ics`;
+      const { normalizedCalendarPath, eventUrl } = buildEventUrl(
+        calendarPath,
+        externalEventId
+      );
 
       let response;
       try {
@@ -1025,13 +1034,7 @@ export class CalDAVCalendarService {
       const client = await this.getClient();
 
       // For Fastmail compatibility, we'll use a PUT request to a specific URL
-      // Ensure the calendar path doesn't have a trailing slash
-      const normalizedCalendarPath = calendarPath.endsWith("/")
-        ? calendarPath.slice(0, -1)
-        : calendarPath;
-
-      // Create a URL for the event using the UID
-      const eventUrl = `${normalizedCalendarPath}/${eventId}.ics`;
+      const { eventUrl } = buildEventUrl(calendarPath, eventId);
 
       let response;
       try {
@@ -1068,7 +1071,7 @@ export class CalDAVCalendarService {
 
           // If PUT fails, fall back to the createObject method
           response = await client.createObject({
-            url: calendarPath,
+            url: eventUrl,
             data: icalData,
             headers: {
               "Content-Type": "text/calendar; charset=utf-8",
@@ -1149,6 +1152,78 @@ export class CalDAVCalendarService {
           error: error instanceof Error ? error.message : "Unknown error",
           calendarPath,
           eventTitle: event.title,
+        },
+        LOG_SOURCE
+      );
+      throw error;
+    }
+  }
+
+  async putEvent(
+    calendarPath: string,
+    event: CalendarEventInput & { id: string }
+  ): Promise<void> {
+    const { eventUrl } = buildEventUrl(calendarPath, event.id);
+    const icalData = this.convertToICalendar(event);
+
+    try {
+      const response = await fetch(eventUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "text/calendar; charset=utf-8",
+          Authorization:
+            "Basic " +
+            Buffer.from(
+              `${this.account.caldavUsername || this.account.email}:${
+                this.account.accessToken
+              }`
+            ).toString("base64"),
+        },
+        body: icalData,
+      });
+
+      if (response.status >= 200 && response.status < 300) {
+        return;
+      }
+
+      logger.error(
+        "Server returned error status when storing event with PUT",
+        {
+          status: response.status,
+          statusText: response.statusText,
+          calendarPath,
+          eventId: event.id,
+          eventUrl,
+        },
+        LOG_SOURCE
+      );
+
+      const client = await this.getClient();
+      const fallback = await client.updateObject({
+        url: eventUrl,
+        data: icalData,
+        headers: {
+          "Content-Type": "text/calendar; charset=utf-8",
+        },
+      });
+
+      if (fallback.status < 200 || fallback.status >= 300) {
+        throw new Error(
+          `Failed to store event on server: ${
+            fallback.statusText || fallback.status
+          }`
+        );
+      }
+    } catch (error) {
+      logger.error(
+        "Failed to store event on CalDAV server",
+        {
+          error:
+            error instanceof Error ? error.message : "Unknown error",
+          stack:
+            error instanceof Error && error.stack ? error.stack : null,
+          calendarPath,
+          eventId: event.id,
         },
         LOG_SOURCE
       );

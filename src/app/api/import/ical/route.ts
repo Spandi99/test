@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import ICAL from "ical.js";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
+
+import type { Prisma } from "@prisma/client";
 
 import { authenticateRequest } from "@/lib/auth/api-auth";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
+import { CalDAVCalendarService } from "@/lib/caldav-calendar";
 
 const LOG_SOURCE = "import-ical-api";
 
@@ -63,6 +66,40 @@ interface ParsedCalendar {
   calendarName?: string;
   calendarColor?: string;
   skipped: number;
+}
+
+interface NormalizedParsedEvent extends ParsedEvent {
+  storageUid: string;
+  storageBaseUid: string;
+  storageMasterUid?: string;
+}
+
+type CalendarFeedWithAccount = Prisma.CalendarFeedGetPayload<{
+  include: { account: true };
+}>;
+
+function makeSafeIdentifier(raw: string | undefined): string {
+  if (!raw) {
+    return `ical-${randomUUID()}`;
+  }
+
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return `ical-${randomUUID()}`;
+  }
+
+  const candidate = trimmed
+    .replace(/[^a-zA-Z0-9._~-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[-._~]+|[-._~]+$/g, "")
+    .slice(0, 180);
+
+  if (candidate && !candidate.includes("/")) {
+    return candidate;
+  }
+
+  const hashed = createHash("sha256").update(trimmed).digest("base64url");
+  return `ical-${hashed}`;
 }
 
 function sanitizeText(value: unknown): string | undefined {
@@ -456,9 +493,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let targetFeed = null as Awaited<
-      ReturnType<typeof prisma.calendarFeed.findFirst>
-    >;
+    let targetFeed: CalendarFeedWithAccount | null = null;
 
     if (payload.feedId) {
       targetFeed = await prisma.calendarFeed.findFirst({
@@ -472,6 +507,9 @@ export async function POST(request: NextRequest) {
               },
             },
           ],
+        },
+        include: {
+          account: true,
         },
       });
 
@@ -596,122 +634,232 @@ export async function POST(request: NextRequest) {
       return a.start.getTime() - b.start.getTime();
     });
 
+    const normalizedEvents: NormalizedParsedEvent[] = orderedEvents.map(
+      (event) => {
+        const storageBaseUid = makeSafeIdentifier(event.baseUid);
+        const storageUid = event.isMaster
+          ? storageBaseUid
+          : makeSafeIdentifier(
+              event.externalEventId ??
+                `${event.baseUid}-${event.start.toISOString()}`
+            );
+        const storageMasterUid = event.isMaster
+          ? undefined
+          : makeSafeIdentifier(event.masterUid ?? event.baseUid);
+
+        return {
+          ...event,
+          storageUid,
+          storageBaseUid,
+          storageMasterUid,
+        };
+      }
+    );
+
     const externalIdsToReplace = Array.from(
       new Set(
-        orderedEvents
-          .map((event) => event.externalEventId?.trim())
-          .filter((id): id is string => typeof id === "string" && id.length > 0)
+        normalizedEvents.flatMap((event) => {
+          const identifiers = [event.storageUid];
+          const legacyId = event.externalEventId?.trim();
+          if (legacyId && legacyId !== event.storageUid) {
+            identifiers.push(legacyId);
+          }
+          return identifiers;
+        })
       )
     );
 
-    const { feed, imported, skipped } = await prisma.$transaction(
-      async (tx) => {
-        const resolvedFeed =
-          targetFeed ??
-          (await tx.calendarFeed.create({
-            data: {
-              name: feedName,
-              color: desiredColor ?? "#3b82f6",
-              type: "LOCAL",
-              enabled: true,
-              userId: auth.userId,
-            },
-          }));
+    let feed: CalendarFeedWithAccount;
 
-        if (externalIdsToReplace.length) {
-          await tx.calendarEvent.deleteMany({
-            where: {
-              feedId: resolvedFeed.id,
-              externalEventId: { in: externalIdsToReplace },
-            },
-          });
-        }
+    if (targetFeed) {
+      feed = targetFeed;
+    } else {
+      const createdFeed = await prisma.calendarFeed.create({
+        data: {
+          name: feedName,
+          color: desiredColor ?? "#3b82f6",
+          type: "LOCAL",
+          enabled: true,
+          userId: auth.userId,
+        },
+      });
 
-        const masterMap = new Map<string, string>();
-        let importedCount = 0;
-        let storageFailures = 0;
+      feed = {
+        ...createdFeed,
+        account: null,
+      } as CalendarFeedWithAccount;
+    }
 
-        for (const event of orderedEvents) {
-          try {
-            const masterEventId = event.masterUid
-              ? masterMap.get(event.masterUid) || null
-              : null;
+    let caldavContext: {
+      service: CalDAVCalendarService;
+      calendarPath: string;
+    } | null = null;
 
-            const createdEvent = await tx.calendarEvent.create({
-              data: {
-                feedId: resolvedFeed.id,
-                externalEventId: event.externalEventId,
-                title: event.title,
-                description: event.description,
-                start: event.start,
-                end: event.end,
-                location: event.location,
-                isRecurring: event.isRecurring,
-                recurrenceRule: event.recurrenceRule,
-                allDay: event.allDay,
-                status: event.status,
-                sequence: event.sequence,
-                created: event.created,
-                lastModified: event.lastModified,
-                isMaster: event.isMaster,
-                masterEventId,
-                recurringEventId: event.isRecurring
-                  ? event.isMaster
-                    ? event.baseUid
-                    : event.masterUid || event.baseUid
-                  : null,
-                organizer: event.organizer
-                  ? {
-                      name: event.organizer.name,
-                      email: event.organizer.email,
-                    }
-                  : undefined,
-                attendees: event.attendees?.length
-                  ? event.attendees.map((attendee) => ({
-                      name: attendee.name,
-                      email: attendee.email,
-                      status: attendee.status,
-                    }))
-                  : undefined,
-              },
-            });
-
-            if (event.isMaster) {
-              masterMap.set(event.baseUid, createdEvent.id);
-            }
-
-            importedCount += 1;
-          } catch (error) {
-            storageFailures += 1;
-            logger.error(
-              "Fehler beim Speichern eines Termins",
-              {
-                feedId: resolvedFeed.id,
-                externalEventId: event.externalEventId,
-                error: error instanceof Error ? error.message : String(error),
-              },
-              LOG_SOURCE
-            );
-          }
-        }
-
-        return {
-          feed: resolvedFeed,
-          imported: importedCount,
-          skipped: parsed.skipped + storageFailures,
-        };
-      },
-      {
-        maxWait: 10_000,
-        timeout: 120_000,
+    if (feed.type === "CALDAV") {
+      const calendarPath = feed.url ?? feed.caldavPath;
+      if (!calendarPath) {
+        return NextResponse.json(
+          { error: "Für diesen CalDAV-Kalender ist kein Pfad hinterlegt" },
+          { status: 400 }
+        );
       }
-    );
+
+      const account =
+        targetFeed?.id === feed.id && targetFeed.account
+          ? targetFeed.account
+          : feed.accountId
+          ? await prisma.connectedAccount.findUnique({
+              where: { id: feed.accountId, userId: auth.userId },
+            })
+          : null;
+
+      if (!account) {
+        return NextResponse.json(
+          {
+            error:
+              "Es konnten keine Anmeldedaten für den CalDAV-Kalender geladen werden",
+          },
+          { status: 400 }
+        );
+      }
+
+      caldavContext = {
+        service: new CalDAVCalendarService(account),
+        calendarPath,
+      };
+    }
+
+    if (caldavContext) {
+      for (const event of normalizedEvents) {
+        try {
+          await caldavContext.service.putEvent(
+            caldavContext.calendarPath,
+            {
+              id: event.storageUid,
+              title: event.title,
+              description: event.description,
+              location: event.location,
+              start: event.start,
+              end: event.end,
+              allDay: event.allDay,
+              isRecurring: event.isRecurring,
+              recurrenceRule: event.recurrenceRule,
+            }
+          );
+        } catch (error) {
+          logger.error(
+            "Fehler beim Übertragen eines Termins an CalDAV",
+            {
+              feedId: feed.id,
+              externalEventId: event.storageUid,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            LOG_SOURCE
+          );
+
+          return NextResponse.json(
+            {
+              error:
+                "Die Termine konnten nicht im CalDAV-Kalender gespeichert werden",
+            },
+            { status: 502 }
+          );
+        }
+      }
+
+      await prisma.calendarFeed.update({
+        where: { id: feed.id },
+        data: {
+          lastSync: new Date(),
+          error: null,
+        },
+      });
+    }
+
+    if (externalIdsToReplace.length) {
+      await prisma.calendarEvent.deleteMany({
+        where: {
+          feedId: feed.id,
+          externalEventId: { in: externalIdsToReplace },
+        },
+      });
+    }
+
+    const masterMap = new Map<string, string>();
+    let importedCount = 0;
+    let storageFailures = 0;
+
+    for (const event of normalizedEvents) {
+      try {
+        const masterLookupKey =
+          event.storageMasterUid ?? event.storageBaseUid;
+        const masterEventId = event.isMaster
+          ? null
+          : masterMap.get(masterLookupKey) ?? null;
+
+        const createdEvent = await prisma.calendarEvent.create({
+          data: {
+            feedId: feed.id,
+            externalEventId: event.storageUid,
+            title: event.title,
+            description: event.description,
+            start: event.start,
+            end: event.end,
+            location: event.location,
+            isRecurring: event.isRecurring,
+            recurrenceRule: event.recurrenceRule,
+            allDay: event.allDay,
+            status: event.status,
+            sequence: event.sequence,
+            created: event.created,
+            lastModified: event.lastModified,
+            isMaster: event.isMaster,
+            masterEventId,
+            recurringEventId: event.isRecurring
+              ? event.storageBaseUid
+              : null,
+            organizer: event.organizer
+              ? {
+                  name: event.organizer.name,
+                  email: event.organizer.email,
+                }
+              : undefined,
+            attendees: event.attendees?.length
+              ? event.attendees.map((attendee) => ({
+                  name: attendee.name,
+                  email: attendee.email,
+                  status: attendee.status,
+                }))
+              : undefined,
+          },
+        });
+
+        if (event.isMaster) {
+          masterMap.set(event.storageBaseUid, createdEvent.id);
+        }
+
+        importedCount += 1;
+      } catch (error) {
+        storageFailures += 1;
+        logger.error(
+          "Fehler beim Speichern eines Termins",
+          {
+            feedId: feed.id,
+            externalEventId: event.storageUid,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          LOG_SOURCE
+        );
+      }
+    }
+
+    const skipped = parsed.skipped + storageFailures;
 
     logger.info(
       "iCal-Import abgeschlossen",
       {
         feedId: feed.id,
-        imported,
+        imported: importedCount,
         skipped,
       },
       LOG_SOURCE
@@ -719,7 +867,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       feedId: feed.id,
-      imported,
+      imported: importedCount,
       feedName: feed.name,
       skipped,
     });
