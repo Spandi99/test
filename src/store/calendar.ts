@@ -5,6 +5,7 @@ import { persist } from "zustand/middleware";
 
 import {
   addMinutes,
+  areIntervalsOverlapping,
   newDate,
   normalizeAllDayDate,
   subDays,
@@ -20,6 +21,8 @@ import {
   CalendarView,
   CalendarViewState,
   CalendarEventTag,
+  CalendarEventMetadata,
+  EventFlag,
 } from "@/types/calendar";
 import { TaskStatus } from "@/types/task";
 
@@ -40,14 +43,67 @@ function normalizeEventTags(event: CalendarEvent): CalendarEvent {
     color: tag.color ?? undefined,
   }));
 
+  const baseMetadata = (event.metadata as CalendarEventMetadata | null) ?? {};
+  const normalizedFlags: EventFlag[] = Array.isArray(baseMetadata.flags)
+    ? (baseMetadata.flags.filter(Boolean) as EventFlag[])
+    : [];
+
+  const metadata: CalendarEventMetadata = {
+    ...baseMetadata,
+    tags,
+    flags:
+      normalizedFlags.length > 0
+        ? normalizedFlags
+        : event.feed?.type === "CALDAV"
+          ? ["fixed"]
+          : [],
+    feedType: event.feed?.type ?? baseMetadata.feedType,
+  };
+
   return {
     ...event,
+    metadata,
     tagIds: tags.map((tag) => tag.id).filter(Boolean) as string[],
     extendedProps: {
       ...event.extendedProps,
       tags,
     },
   };
+}
+
+function filterConditionalBlocks(events: CalendarEvent[]): CalendarEvent[] {
+  const fixedBlocks = events.filter((event) => {
+    const flags = (event.metadata?.flags as EventFlag[] | undefined) ?? [];
+    if (flags.includes("fixed")) {
+      return true;
+    }
+    return (
+      event.metadata?.feedType === "CALDAV" ||
+      event.metadata?.progressionTagId === "uni"
+    );
+  });
+
+  return events.filter((event) => {
+    const flags = (event.metadata?.flags as EventFlag[] | undefined) ?? [];
+    if (!flags.includes("conditional-learning")) {
+      return true;
+    }
+
+    return !fixedBlocks.some((fixed) => {
+      if (fixed.id === event.id) return false;
+      const overlaps = areIntervalsOverlapping(
+        { start: newDate(event.start), end: newDate(event.end) },
+        { start: newDate(fixed.start), end: newDate(fixed.end) }
+      );
+      if (!overlaps) return false;
+
+      return (
+        fixed.metadata?.feedType === "CALDAV" ||
+        fixed.metadata?.progressionTagId === "uni" ||
+        (fixed.metadata?.flags as EventFlag[] | undefined)?.includes("fixed")
+      );
+    });
+  });
 }
 
 function shouldCreatePracticumReminder(event: CalendarEvent): boolean {
@@ -95,6 +151,7 @@ function createPracticumReminder(event: CalendarEvent): CalendarEvent | null {
     allDay: false,
     isRecurring: false,
     isMaster: false,
+    metadata: event.metadata,
     extendedProps: {
       ...event.extendedProps,
       tags: baseTags,
@@ -106,14 +163,15 @@ function createPracticumReminder(event: CalendarEvent): CalendarEvent | null {
 
 function prepareEventsForStore(events: CalendarEvent[]): CalendarEvent[] {
   const normalized = events.map((event) => normalizeEventTags(event));
-  const extras = normalized
+  const conditioned = filterConditionalBlocks(normalized);
+  const extras = conditioned
     .map((event) => createPracticumReminder(event))
     .filter((event): event is CalendarEvent => Boolean(event));
 
-  const seen = new Set(normalized.map((event) => event.id));
+  const seen = new Set(conditioned.map((event) => event.id));
   const uniqueExtras = extras.filter((event) => !seen.has(event.id));
 
-  return [...normalized, ...uniqueExtras];
+  return [...conditioned, ...uniqueExtras];
 }
 
 // Separate store for view preferences that will be persisted in localStorage
@@ -123,8 +181,12 @@ interface ViewStore extends CalendarViewState {
   setSelectedEventId: (id?: string) => void;
 }
 
-export type CalendarEventRequest = Omit<CalendarEvent, "id"> & {
+export type CalendarEventRequest = Omit<
+  CalendarEvent,
+  "id" | "feed" | "extendedProps" | "tagIds"
+> & {
   tagIds?: string[];
+  metadata?: CalendarEventMetadata | null;
 };
 
 export const useViewStore = create<ViewStore>()(

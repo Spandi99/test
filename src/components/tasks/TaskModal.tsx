@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import type { Prisma } from "@prisma/client";
+
 import { RRule } from "rrule";
 
 import { Button } from "@/components/ui/button";
@@ -24,6 +26,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 
 import { format, newDate } from "@/lib/date-utils";
+import { PROGRESSION_TAGS, getProgressionTag } from "@/lib/progression-tags";
 import { RecurrenceConverterFactory } from "@/lib/task-sync/recurrence/recurrence-converter-factory";
 import { cn } from "@/lib/utils";
 
@@ -115,6 +118,7 @@ export function TaskModal({
   const [priority, setPriority] = useState<Priority | null>(
     task?.priority || null
   );
+  const [progressionTagId, setProgressionTagId] = useState<string | undefined>();
   const titleInputRef = useRef<HTMLInputElement>(null);
 
   const resetForm = useCallback(() => {
@@ -135,6 +139,7 @@ export function TaskModal({
     setIsAutoScheduled(true);
     setScheduleLocked(false);
     setPriority(null);
+    setProgressionTagId(undefined);
   }, [initialProjectId]);
 
   // Reset form when modal opens/closes
@@ -173,6 +178,10 @@ export function TaskModal({
       setIsAutoScheduled(task.isAutoScheduled);
       setScheduleLocked(task.scheduleLocked);
       setPriority(task.priority || null);
+      const metadata = (task.metadata as Record<string, unknown> | null) ?? null;
+      setProgressionTagId(
+        (metadata?.progressionTagId as string | undefined) || undefined
+      );
     } else if (!task && isOpen) {
       resetForm();
     }
@@ -191,6 +200,30 @@ export function TaskModal({
 
     setIsSubmitting(true);
     try {
+      const existingMetadata =
+        (task?.metadata as Record<string, unknown> | null) ?? null;
+      const progressionTag = progressionTagId
+        ? getProgressionTag(progressionTagId)
+        : null;
+      const metadata = (() => {
+        if (progressionTagId && progressionTag) {
+          return {
+            ...existingMetadata,
+            progressionTagId,
+            statKey: progressionTag.statKey,
+            taskType: progressionTag.taskType,
+          };
+        }
+        if (!existingMetadata) return null;
+        const rest = { ...existingMetadata };
+        delete rest.progressionTagId;
+        delete rest.statKey;
+        delete rest.taskType;
+        return Object.keys(rest).length > 0 ? rest : null;
+      })();
+
+      const metadataToPersist = (metadata ?? null) as Prisma.JsonValue | null;
+
       await onSave({
         title: title.trim(),
         description: description.trim() || undefined,
@@ -207,6 +240,7 @@ export function TaskModal({
         isAutoScheduled,
         scheduleLocked,
         priority,
+        metadata: metadataToPersist ?? undefined,
       });
       onClose();
     } catch (error) {
@@ -513,6 +547,33 @@ export function TaskModal({
                 Add Tag
               </Button>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="progression-tag">Stat Kategorie</Label>
+            <Select
+              value={progressionTagId ?? "none"}
+              onValueChange={(value) =>
+                setProgressionTagId(value === "none" ? undefined : value)
+              }
+            >
+              <SelectTrigger id="progression-tag">
+                <SelectValue placeholder="Wähle eine Kategorie" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Keine Zuordnung</SelectItem>
+                {PROGRESSION_TAGS.map((tag) => (
+                  <SelectItem key={tag.id} value={tag.id}>
+                    {tag.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {progressionTagId && (
+              <p className="text-xs text-muted-foreground">
+                {getProgressionTag(progressionTagId)?.description}
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">

@@ -15,6 +15,7 @@ import {
   getWeekdayKey,
   getXpForLevel,
 } from "@/lib/stats-config";
+import { getProgressionTag } from "@/lib/progression-tags";
 import { newDate } from "@/lib/date-utils";
 
 import { EnergyLevel, Priority, Task } from "@/types/task";
@@ -136,6 +137,12 @@ function getMatchingTagDefinitions<T extends { name?: string }>(
 }
 
 function inferStatFromTask(task: Task): StatKey {
+  const metadata = (task.metadata as Record<string, unknown> | null) ?? null;
+  const progressionTagId = metadata?.progressionTagId as string | undefined;
+  const progressionTag = getProgressionTag(progressionTagId);
+  if (progressionTag) {
+    return progressionTag.statKey;
+  }
   const tagMatch = getMatchingTagDefinitions(task.tags)[0];
   if (tagMatch) {
     return tagMatch.statKey;
@@ -196,6 +203,12 @@ function collectEventTags(event: CalendarEvent) {
 }
 
 function inferStatFromEvent(event: CalendarEvent): StatKey {
+  const metadata = event.metadata as Record<string, unknown> | null;
+  const progressionTagId = metadata?.progressionTagId as string | undefined;
+  const progressionTag = getProgressionTag(progressionTagId);
+  if (progressionTag) {
+    return progressionTag.statKey;
+  }
   const tagMatch = getMatchingTagDefinitions(collectEventTags(event))[0];
   if (tagMatch) {
     return tagMatch.statKey;

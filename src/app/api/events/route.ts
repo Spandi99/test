@@ -33,6 +33,7 @@ export async function GET(request: NextRequest) {
           select: {
             name: true,
             color: true,
+            type: true,
           },
         },
       },
@@ -76,6 +77,7 @@ export async function POST(request: NextRequest) {
       recurrenceRule,
       allDay,
       tagIds,
+      metadata: incomingMetadata,
     } = await request.json();
 
     if (!feedId || !title || !start || !end) {
@@ -106,10 +108,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const baseMetadata =
+      (incomingMetadata as Prisma.InputJsonObject | null | undefined) ??
+      undefined;
+
     let metadata:
       | Prisma.NullableJsonNullValueInput
       | Prisma.InputJsonValue
-      | undefined;
+      | undefined = baseMetadata;
 
     if (Array.isArray(tagIds)) {
       const tags = await prisma.tag.findMany({
@@ -124,10 +130,20 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      metadata =
+      const tagMetadata =
         tags.length > 0
           ? ({ tags } satisfies Prisma.JsonObject)
           : Prisma.JsonNull;
+
+      if (tagMetadata === Prisma.JsonNull) {
+        if (metadata && typeof metadata === "object") {
+          delete (metadata as Prisma.JsonObject).tags;
+        }
+      } else if (metadata && typeof metadata === "object") {
+        (metadata as Prisma.JsonObject).tags = (tagMetadata as Prisma.JsonObject).tags;
+      } else {
+        metadata = tagMetadata;
+      }
     }
 
     // Create event in database
@@ -142,7 +158,7 @@ export async function POST(request: NextRequest) {
         isRecurring: isRecurring || false,
         recurrenceRule,
         allDay: allDay || false,
-        metadata,
+        metadata: metadata ?? Prisma.JsonNull,
       },
     });
 
@@ -183,6 +199,7 @@ export async function PATCH(request: NextRequest) {
       recurrenceRule,
       allDay,
       tagIds,
+      metadata: incomingMetadata,
     } = await request.json();
 
     if (!id) {
@@ -207,11 +224,14 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    const baseMetadata =
+      (incomingMetadata as Prisma.InputJsonObject | null | undefined) ??
+      ((existingEvent.metadata as Prisma.InputJsonObject | null) ?? undefined);
+
     let metadata:
       | Prisma.NullableJsonNullValueInput
       | Prisma.InputJsonValue
-      | undefined =
-      (existingEvent.metadata as Prisma.InputJsonValue | null) ?? undefined;
+      | undefined = baseMetadata;
 
     if (Array.isArray(tagIds)) {
       const tags = await prisma.tag.findMany({
@@ -227,7 +247,11 @@ export async function PATCH(request: NextRequest) {
       });
 
       if (tags.length === 0) {
-        metadata = Prisma.JsonNull;
+        if (metadata && typeof metadata === "object") {
+          delete (metadata as Prisma.JsonObject).tags;
+        }
+      } else if (metadata && typeof metadata === "object") {
+        (metadata as Prisma.JsonObject).tags = tags as unknown as Prisma.JsonValue;
       } else {
         metadata = ({ tags } satisfies Prisma.JsonObject);
       }
@@ -244,7 +268,7 @@ export async function PATCH(request: NextRequest) {
         isRecurring,
         recurrenceRule,
         allDay,
-        metadata,
+        metadata: metadata ?? Prisma.JsonNull,
       },
     });
 

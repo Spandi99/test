@@ -14,6 +14,12 @@ interface StatsAvatarProps {
   streak: number;
 }
 
+const FACE_ACCENTS = {
+  eyes: "bg-black/40",
+  smile: "bg-black/20",
+  blush: "bg-red-400/25",
+};
+
 export const StatsAvatar = memo(function StatsAvatar({
   avatar,
   dominantStat,
@@ -27,52 +33,72 @@ export const StatsAvatar = memo(function StatsAvatar({
     <div className="relative flex h-full w-full items-center justify-center">
       <div
         className={cn(
-          "relative flex h-52 w-48 flex-col items-center justify-end overflow-hidden rounded-3xl border-4 border-border shadow-xl",
-          "bg-gradient-to-br",
+          "relative flex w-64 flex-col items-center overflow-hidden rounded-3xl border border-border/60 bg-gradient-to-br shadow-2xl",
           avatar.layers.background
         )}
       >
-        <div className="absolute inset-3 rounded-2xl bg-background/25 backdrop-blur-sm" />
-        <div className="relative flex h-full w-full flex-col items-center justify-end gap-3 pb-6 pt-6">
-          <div className="relative flex h-28 w-24 flex-col items-center">
-            <div
-              className="absolute top-0 h-6 w-16 rounded-t-full"
-              style={{ backgroundColor: avatar.layers.hairColor }}
-            />
-            <div
-              className="absolute top-4 h-16 w-16 rounded-full border-2 border-white/30"
-              style={{ backgroundColor: avatar.layers.skinTone }}
-            />
-            <div className="absolute top-9 flex w-10 justify-between">
-              <span className="h-2 w-2 rounded-full bg-black/50" aria-hidden />
-              <span className="h-2 w-2 rounded-full bg-black/50" aria-hidden />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.25),_transparent_55%)]" />
+        <div className="relative flex w-full flex-col items-center gap-6 px-6 pb-8 pt-10">
+          <div className="relative flex h-36 w-full items-end justify-center">
+            <div className="relative flex h-36 w-32 flex-col items-center justify-start">
+              <div
+                className="absolute top-0 h-16 w-28 rounded-[2.5rem] shadow-lg"
+                style={{ backgroundColor: avatar.layers.hairColor }}
+              />
+              <div
+                className="absolute top-3 flex h-28 w-28 flex-col items-center rounded-[2.25rem] border-4 border-white/60 bg-gradient-to-br from-white/95 via-white/90 to-white/60 shadow-lg"
+                style={{
+                  backgroundColor: avatar.layers.skinTone,
+                  borderColor: avatar.layers.skinTone,
+                }}
+              >
+                <div className="mt-6 flex w-16 items-center justify-between">
+                  <span className={cn("h-2 w-2 rounded-full", FACE_ACCENTS.eyes)} />
+                  <span className={cn("h-2 w-2 rounded-full", FACE_ACCENTS.eyes)} />
+                </div>
+                <div className="mt-3 h-1.5 w-10 rounded-full bg-black/15" />
+                <div className="mt-2 flex w-20 justify-between">
+                  <span className="h-2.5 w-5 rounded-full" style={{ backgroundColor: avatar.layers.accentColor, opacity: 0.2 }} />
+                  <span className="h-2.5 w-5 rounded-full" style={{ backgroundColor: avatar.layers.accentColor, opacity: 0.2 }} />
+                </div>
+                <div
+                  className={cn(
+                    "mt-4 h-2 w-12 rounded-full",
+                    FACE_ACCENTS.smile
+                  )}
+                />
+              </div>
+              <div
+                className="absolute bottom-0 h-24 w-32 rounded-[2.5rem] border-4 border-white/40 shadow-inner"
+                style={{ backgroundColor: avatar.layers.outfitColor }}
+              />
+              <div
+                className="absolute bottom-5 h-3 w-24 rounded-full opacity-80"
+                style={{ backgroundColor: avatar.layers.accentColor }}
+              />
             </div>
-            <div className="absolute top-[3.6rem] h-1.5 w-6 rounded-full bg-black/20" aria-hidden />
           </div>
-          <div className="relative flex h-24 w-28 items-center justify-center">
-            <div
-              className="h-full w-full rounded-[2rem] border-2 border-white/40 shadow-inner"
-              style={{ backgroundColor: avatar.layers.outfitColor }}
-            />
-            <div
-              className="absolute bottom-5 h-2 w-20 rounded-full"
-              style={{ backgroundColor: avatar.layers.accentColor }}
-            />
-          </div>
-          <div className="flex flex-col items-center gap-1 text-center">
-            <div className="rounded-full bg-background/80 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-foreground shadow-sm">
-              Level {level}
+
+          <div className="flex w-full flex-col items-center gap-2 text-center">
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-background/80 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-foreground/80 shadow-sm">
+                Level {level}
+              </span>
+              <span className="rounded-full bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
+                {definition.label}
+              </span>
             </div>
-            <span className="text-sm font-semibold text-foreground/90">
+            <span className="text-lg font-semibold text-foreground/90">
               {avatar.label}
             </span>
-            <span className="text-xs text-muted-foreground">
-              {definition.label}: {definition.description}
-            </span>
+            <p className="max-w-[16rem] text-sm text-muted-foreground">
+              {definition.description}
+            </p>
           </div>
         </div>
       </div>
-      <div className="absolute -bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-background px-4 py-1 text-xs font-semibold shadow-lg">
+
+      <div className="absolute -bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-background/90 px-4 py-1.5 text-xs font-semibold shadow-xl">
         <span>🔥 Streak</span>
         <span className="text-sm text-primary">{streakLabel}</span>
       </div>

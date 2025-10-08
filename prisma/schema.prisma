@@ -85,6 +85,7 @@ model User {
   taskProviders        TaskProvider[]
   TaskChange           TaskChange[]
   PasswordReset        PasswordReset[]
+  productivitySamples  ProductivitySample[]
 }
 
 model VerificationToken {
@@ -211,6 +212,7 @@ model Task {
 
   // Organization
   tags Tag[]
+  metadata Json?
 
   // Recurrence
   isRecurring       Boolean   @default(false)
@@ -267,7 +269,12 @@ model Tag {
   id    String  @id @default(cuid())
   name  String
   color String?
+  category String?
+  statKey  String?
   tasks Task[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // User relationship
   userId String?
@@ -276,6 +283,29 @@ model Tag {
   @@unique([name, userId])
   @@index([name])
   @@index([userId])
+}
+
+model ProductivitySample {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceType  String
+  sourceId    String
+  recordedAt  DateTime @default(now())
+  dayOfWeek   Int
+  hourOfDay   Int
+  duration    Int
+  taskType    String
+  energyLevel Int?
+  overlapWithUni Boolean @default(false)
+  success     Boolean
+  mood        Int?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, recordedAt])
+  @@index([userId, sourceType, sourceId])
 }
 
 model AutoScheduleSettings {

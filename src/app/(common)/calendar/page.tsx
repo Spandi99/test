@@ -82,8 +82,10 @@ export default async function HomePage() {
       include: {
         feed: {
           select: {
+            id: true,
             name: true,
             color: true,
+            type: true,
           },
         },
       },

@@ -19,6 +19,12 @@ export interface CalendarEventTag {
   color?: string | null;
 }
 
+export type EventFlag =
+  | "fixed"
+  | "flexible"
+  | "conditional-learning"
+  | "dopamine";
+
 export interface ExtendedEventProps {
   isTask?: boolean;
   taskId?: string;
@@ -33,6 +39,16 @@ export interface ExtendedEventProps {
 
 export interface CalendarEventMetadata {
   tags?: CalendarEventTag[];
+  progressionTagId?: string;
+  statKey?: string;
+  taskType?: string;
+  flags?: EventFlag[];
+  energyLevel?: number;
+  completion?: {
+    at: string;
+    mood?: number | null;
+  } | null;
+  feedType?: string;
   [key: string]: unknown;
 }
 
@@ -73,6 +89,12 @@ export interface CalendarEvent {
   extendedProps?: ExtendedEventProps;
   metadata?: CalendarEventMetadata | null;
   tagIds?: string[];
+  feed?: {
+    id: string;
+    name: string;
+    color?: string | null;
+    type?: string | null;
+  };
 }
 
 export enum EventStatus {

@@ -14,6 +14,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 
+import { mapTaskToSample } from "@/lib/productivity";
 import { cn } from "@/lib/utils";
 
 import { useProjectStore } from "@/store/project";
@@ -89,6 +90,7 @@ export default function TasksPage() {
         .getState()
         .awardTaskCompletion(updatedTask);
       showXpToast(summary);
+      mapTaskToSample(updatedTask);
     }
 
     await fetchTasks();

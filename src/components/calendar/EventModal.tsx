@@ -25,13 +25,14 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 
 import { formatToLocalISOString, newDate } from "@/lib/date-utils";
+import { PROGRESSION_TAGS, getProgressionTag } from "@/lib/progression-tags";
 import { cn } from "@/lib/utils";
 
 import { useCalendarStore, CalendarEventRequest } from "@/store/calendar";
 import { useSettingsStore } from "@/store/settings";
 import { useTaskStore } from "@/store/task";
 
-import { CalendarEvent } from "@/types/calendar";
+import { CalendarEvent, EventFlag } from "@/types/calendar";
 import { NewTag, Tag } from "@/types/task";
 
 interface EventModalProps {
@@ -63,6 +64,33 @@ const WEEKDAYS = {
   FR: "Friday",
   SA: "Saturday",
 } as const;
+
+const FLAG_OPTIONS: Array<{
+  value: EventFlag;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "flexible",
+    label: "Flexibel",
+    description: "Kann verschoben werden, wenn der Tag eng wird.",
+  },
+  {
+    value: "fixed",
+    label: "Fix",
+    description: "Bleibt unverrückbar im Kalender.",
+  },
+  {
+    value: "conditional-learning",
+    label: "Lernblock",
+    description: "Geplante Lernzeit, fällt aus wenn Uni-Events kollidieren.",
+  },
+  {
+    value: "dopamine",
+    label: "Dopamin-Boost",
+    description: "Wird besonders gefeiert – perfekte Motivation.",
+  },
+];
 
 // Helper function to parse recurrence rule
 function parseRecurrenceRule(rule?: string) {
@@ -169,6 +197,9 @@ export function EventModal({
   const [newTagName, setNewTagName] = useState("");
   const [newTagColor, setNewTagColor] = useState("#3b82f6");
   const [isCreatingTag, setIsCreatingTag] = useState(false);
+  const [progressionTagId, setProgressionTagId] = useState<string | undefined>();
+  const [eventFlags, setEventFlags] = useState<EventFlag[]>([]);
+  const [energyLevel, setEnergyLevel] = useState<string>("");
 
   useEffect(() => {
     if (isOpen && availableTags.length === 0) {
@@ -220,6 +251,23 @@ export function EventModal({
         eventTags
           .map((tag) => tag.id)
           .filter((id): id is string => Boolean(id))
+      );
+
+      const metadata = (event?.metadata as Record<string, unknown> | null) ?? null;
+      setProgressionTagId(
+        (metadata?.progressionTagId as string | undefined) || undefined
+      );
+      setEventFlags(
+        Array.isArray(metadata?.flags)
+          ? (metadata?.flags.filter(Boolean) as EventFlag[])
+          : event?.feed?.type === "CALDAV"
+            ? ["fixed"]
+            : []
+      );
+      setEnergyLevel(
+        typeof metadata?.energyLevel === "number"
+          ? String(metadata?.energyLevel)
+          : ""
       );
       setNewTagName("");
       setNewTagColor("#3b82f6");
@@ -291,6 +339,21 @@ export function EventModal({
         return;
       }
 
+      const progressionTag = getProgressionTag(progressionTagId);
+      const metadata = {
+        tags: selectedTags.map((tag) => ({
+          id: tag.id,
+          name: tag.name,
+          color: tag.color ?? null,
+        })),
+        progressionTagId,
+        statKey: progressionTag?.statKey,
+        taskType: progressionTag?.taskType,
+        flags: eventFlags,
+        energyLevel: energyLevel ? Number(energyLevel) : undefined,
+        feedType: feed.type,
+      };
+
       const eventData: CalendarEventRequest = {
         title,
         description,
@@ -309,6 +372,7 @@ export function EventModal({
           : undefined,
         isMaster: false,
         tagIds: selectedTagIds,
+        metadata,
       };
 
       if (event?.id) {
@@ -636,6 +700,88 @@ export function EventModal({
               </form>
             </div>
 
+            <div className="space-y-2">
+              <Label htmlFor="event-progression">Stat Kategorie</Label>
+              <Select
+                value={progressionTagId ?? "none"}
+                onValueChange={(value) =>
+                  setProgressionTagId(value === "none" ? undefined : value)
+                }
+              >
+                <SelectTrigger id="event-progression">
+                  <SelectValue placeholder="Kategorie auswählen" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Keine Zuordnung</SelectItem>
+                  {PROGRESSION_TAGS.map((tag) => (
+                    <SelectItem key={tag.id} value={tag.id}>
+                      {tag.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {progressionTagId && (
+                <p className="text-xs text-muted-foreground">
+                  {getProgressionTag(progressionTagId)?.description}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Flags</Label>
+              <div className="space-y-2 rounded-md border border-border/60 p-3">
+                {FLAG_OPTIONS.map((flag) => {
+                  const active = eventFlags.includes(flag.value);
+                  return (
+                    <button
+                      key={flag.value}
+                      type="button"
+                      onClick={() => {
+                        setEventFlags((prev) =>
+                          prev.includes(flag.value)
+                            ? prev.filter((value) => value !== flag.value)
+                            : [...prev, flag.value]
+                        );
+                      }}
+                      className={cn(
+                        "flex w-full flex-col items-start gap-1 rounded-md border px-3 py-2 text-left text-sm transition-colors",
+                        active
+                          ? "border-primary/60 bg-primary/10 text-primary"
+                          : "border-transparent bg-muted/40 hover:bg-muted/70"
+                      )}
+                    >
+                      <span className="font-medium">{flag.label}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {flag.description}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="event-energy">Energie-Level (1-5)</Label>
+              <Select
+                value={energyLevel || "none"}
+                onValueChange={(value) =>
+                  setEnergyLevel(value === "none" ? "" : value)
+                }
+              >
+                <SelectTrigger id="event-energy">
+                  <SelectValue placeholder="Optional" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Kein Wert</SelectItem>
+                  {[1, 2, 3, 4, 5].map((level) => (
+                    <SelectItem key={level} value={String(level)}>
+                      {level}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="recurring"
@@ -759,5 +905,8 @@ export function EventModal({
     setNewTagName("");
     setNewTagColor("#3b82f6");
     setIsCreatingTag(false);
+    setProgressionTagId(undefined);
+    setEventFlags([]);
+    setEnergyLevel("");
   }
 }

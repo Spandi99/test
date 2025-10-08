@@ -1,3 +1,5 @@
+import type { Prisma } from "@prisma/client";
+
 import { ChangeType } from "@/lib/task-sync/task-change-tracker";
 
 import { Project } from "./project";
@@ -31,6 +33,8 @@ export interface Tag {
   id: string;
   name: string;
   color?: string;
+  category?: string | null;
+  statKey?: string | null;
 }
 
 export interface Task {
@@ -66,6 +70,7 @@ export interface Task {
   source?: string | null;
   externalListId?: string | null;
   lastSyncedAt?: Date | null;
+  metadata?: Prisma.JsonValue | null;
 }
 
 export interface NewTask

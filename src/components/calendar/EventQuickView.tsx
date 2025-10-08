@@ -15,6 +15,7 @@ import {
 } from "react-icons/io5";
 
 import { format, isFutureDate, newDate } from "@/lib/date-utils";
+import { mapEventToSample } from "@/lib/productivity";
 import { isTaskOverdue } from "@/lib/task-utils";
 import { cn } from "@/lib/utils";
 
@@ -58,6 +59,13 @@ const priorityColors = {
   [Priority.MEDIUM]: "text-warning dark:text-warning",
   [Priority.LOW]: "text-primary dark:text-primary",
   [Priority.NONE]: "text-muted-foreground",
+};
+
+const FLAG_LABELS: Record<string, string> = {
+  flexible: "Flexibel",
+  fixed: "Fix",
+  "conditional-learning": "Lernblock",
+  dopamine: "Dopamin Boost",
 };
 
 export function EventQuickView({
@@ -183,6 +191,7 @@ export function EventQuickView({
                     if (hasClaimedReward) return;
                     const summary = awardEventCompletion(eventItem);
                     showXpToast(summary);
+                    mapEventToSample(eventItem);
                     setHasClaimedReward(true);
                   }}
                   className={cn(
@@ -254,6 +263,22 @@ export function EventQuickView({
                         {tag.name}
                       </span>
                     ))}
+                  </div>
+                )}
+              {Array.isArray(eventItem.metadata?.flags) &&
+                eventItem.metadata?.flags.length > 0 && (
+                  <div className="flex items-start gap-2">
+                    <IoFlagOutline className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      {eventItem.metadata.flags.map((flag) => (
+                        <span
+                          key={flag}
+                          className="rounded-full bg-muted px-2 py-0.5 font-semibold text-muted-foreground"
+                        >
+                          {FLAG_LABELS[flag] ?? flag}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
               {eventItem.attendees && eventItem.attendees.length > 0 && (
