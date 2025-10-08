@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { HiCheck, HiPencil, HiTrash, HiX } from "react-icons/hi";
 
@@ -209,6 +209,8 @@ export function TaskList({
     });
   }, [filteredTasks, sortBy, sortDirection]);
 
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+
   const hasActiveFilters =
     status?.length ||
     energyLevel?.length ||
@@ -216,94 +218,134 @@ export function TaskList({
     tagIds?.length ||
     search;
 
+  const filterControls = (
+    <>
+      <StatusFilter
+        value={status || []}
+        onChange={(value) => setFilters({ status: value })}
+      />
+
+      <Select
+        value={energyLevel?.[0] || "none"}
+        onValueChange={(value) =>
+          setFilters({
+            energyLevel:
+              value !== "none" ? [value as EnergyLevel] : undefined,
+          })
+        }
+      >
+        <SelectTrigger className="h-9 w-full sm:w-[140px]">
+          <SelectValue placeholder="All Energy" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="none">All Energy</SelectItem>
+          {Object.values(EnergyLevel).map((level) => (
+            <SelectItem key={level} value={level}>
+              {formatEnumValue(level)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select
+        value={timePreference?.[0] || "none"}
+        onValueChange={(value) =>
+          setFilters({
+            timePreference:
+              value !== "none" ? [value as TimePreference] : undefined,
+          })
+        }
+      >
+        <SelectTrigger className="h-9 w-full sm:w-[140px]">
+          <SelectValue placeholder="All Times" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="none">All Times</SelectItem>
+          {Object.values(TimePreference).map((time) => (
+            <SelectItem key={time} value={time}>
+              {formatEnumValue(time)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <div className="flex flex-1 flex-col gap-2 sm:flex-row">
+        <Input
+          value={search || ""}
+          onChange={(e) => setFilters({ search: e.target.value || undefined })}
+          placeholder="Search tasks..."
+          className="h-9"
+        />
+        {hasActiveFilters && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={resetFilters}
+            className="hidden h-9 md:inline-flex md:w-auto"
+          >
+            <HiX className="mr-1 h-4 w-4" />
+            Clear Filters
+          </Button>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Checkbox
+          id="hideUpcomingTasks"
+          checked={hideUpcomingTasks}
+          onCheckedChange={(checked) =>
+            setFilters({ hideUpcomingTasks: checked as boolean })
+          }
+        />
+        <label
+          htmlFor="hideUpcomingTasks"
+          className="text-sm leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+        >
+          Hide upcoming tasks
+        </label>
+      </div>
+    </>
+  );
+
   return (
     <div className="flex h-full flex-col">
-      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
-        <StatusFilter
-          value={status || []}
-          onChange={(value) => setFilters({ status: value })}
-        />
-
-        <Select
-          value={energyLevel?.[0] || "none"}
-          onValueChange={(value) =>
-            setFilters({
-              energyLevel:
-                value !== "none" ? [value as EnergyLevel] : undefined,
-            })
-          }
-        >
-          <SelectTrigger className="h-9 w-full sm:w-[140px]">
-            <SelectValue placeholder="All Energy" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">All Energy</SelectItem>
-            {Object.values(EnergyLevel).map((level) => (
-              <SelectItem key={level} value={level}>
-                {formatEnumValue(level)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select
-          value={timePreference?.[0] || "none"}
-          onValueChange={(value) =>
-            setFilters({
-              timePreference:
-                value !== "none" ? [value as TimePreference] : undefined,
-            })
-          }
-        >
-          <SelectTrigger className="h-9 w-full sm:w-[140px]">
-            <SelectValue placeholder="All Times" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">All Times</SelectItem>
-            {Object.values(TimePreference).map((time) => (
-              <SelectItem key={time} value={time}>
-                {formatEnumValue(time)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <div className="flex flex-1 flex-col gap-2 sm:flex-row">
-          <Input
-            value={search || ""}
-            onChange={(e) =>
-              setFilters({ search: e.target.value || undefined })
-            }
-            placeholder="Search tasks..."
-              className="h-9"
-          />
+      <div className="mb-4 flex flex-col gap-3">
+        <div className="flex items-center justify-between md:hidden">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setMobileFiltersOpen((open) => !open)}
+          >
+            {mobileFiltersOpen ? "Filter ausblenden" : "Filter anzeigen"}
+          </Button>
           {hasActiveFilters && (
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               onClick={resetFilters}
-              className="h-9 sm:w-auto"
+              className="text-muted-foreground"
             >
-              <HiX className="mr-1 h-4 w-4" />
-              Clear Filters
+              Zurücksetzen
             </Button>
           )}
         </div>
-
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="hideUpcomingTasks"
-            checked={hideUpcomingTasks}
-            onCheckedChange={(checked) =>
-              setFilters({ hideUpcomingTasks: checked as boolean })
-            }
-          />
-          <label
-            htmlFor="hideUpcomingTasks"
-            className="text-sm leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-          >
-            Hide upcoming tasks
-          </label>
+        {mobileFiltersOpen && (
+          <div className="flex flex-col gap-3 rounded-lg border border-border/60 bg-muted/40 p-3 md:hidden">
+            {filterControls}
+            {hasActiveFilters && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={resetFilters}
+                className="md:hidden"
+              >
+                <HiX className="mr-1 h-4 w-4" /> Filter löschen
+              </Button>
+            )}
+          </div>
+        )}
+        <div className="hidden flex-wrap items-center gap-3 md:flex">
+          {filterControls}
         </div>
       </div>
 

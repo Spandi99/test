@@ -158,7 +158,7 @@ export default function StatsPage() {
                           onClick={() => handleSelectAvatar(preset.id)}
                           disabled={!isUnlocked}
                           className={cn(
-                            "group flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3 text-left transition",
+                            "group flex flex-col items-start gap-3 rounded-xl border border-white/10 bg-white/5 p-3 text-left transition sm:flex-row sm:items-center",
                             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400",
                             isActive && "border-sky-300/70 bg-sky-500/10 shadow-lg",
                             !isUnlocked && "cursor-not-allowed opacity-50"
@@ -166,13 +166,13 @@ export default function StatsPage() {
                         >
                           <div
                             className={cn(
-                              "flex h-12 w-12 items-center justify-center rounded-xl border border-white/20 bg-gradient-to-br text-xl text-white",
+                              "flex h-10 w-10 items-center justify-center rounded-xl border border-white/20 bg-gradient-to-br text-lg text-white sm:h-12 sm:w-12 sm:text-xl",
                               preset.layers.background
                             )}
                           >
                             <span aria-hidden>{STAT_DEFINITIONS[dominantStat].emoji}</span>
                           </div>
-                          <div className="flex flex-1 flex-col">
+                          <div className="flex flex-1 flex-col text-sm sm:text-base">
                             <span className="text-sm font-semibold text-white">
                               {preset.label}
                             </span>

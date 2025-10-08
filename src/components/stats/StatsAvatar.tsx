@@ -185,11 +185,11 @@ export const StatsAvatar = memo(function StatsAvatar({
   const streakLabel = streak > 0 ? `${streak} Tage` : "Bereit für den Start";
 
   return (
-    <div className="relative flex w-full max-w-[18rem] items-center justify-center pb-12 sm:max-w-[20rem]">
-      <div className="pointer-events-none absolute inset-0 -z-10">
+    <div className="relative flex w-full max-w-[15rem] flex-col items-center text-white sm:max-w-[18rem]">
+      <div className="pointer-events-none absolute inset-0 -z-10 flex items-center justify-center">
         <div
           className={cn(
-            "absolute left-1/2 top-8 h-64 w-64 -translate-x-1/2 rounded-full blur-3xl",
+            "h-60 w-60 rounded-full blur-3xl",
             "bg-gradient-to-br",
             avatar.layers.aura ?? "from-primary/30 via-primary/5 to-transparent"
           )}
@@ -198,21 +198,21 @@ export const StatsAvatar = memo(function StatsAvatar({
 
       <div
         className={cn(
-          "relative flex w-full flex-col items-center overflow-hidden rounded-[2.5rem] border border-white/10 bg-gradient-to-br shadow-[0_35px_120px_-45px_rgba(0,0,0,0.65)]",
+          "relative flex w-full flex-col items-center overflow-visible rounded-[2.25rem] border border-white/10 bg-gradient-to-br p-6 shadow-[0_30px_80px_-50px_rgba(0,0,0,0.75)]",
           avatar.layers.background
         )}
       >
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.28),_transparent_60%)]" />
-        <div className="relative flex w-full flex-col items-center gap-6 px-6 pb-14 pt-12 text-center sm:gap-8">
-          <div className="relative flex h-40 w-full items-end justify-center">
-            <div className="relative flex h-40 w-36 flex-col items-center justify-start">
+        <div className="absolute inset-0 rounded-[2.25rem] bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.25),_transparent_70%)]" />
+        <div className="relative flex w-full flex-col items-center gap-6 text-center">
+          <div className="relative flex w-full justify-center">
+            <div className="relative flex h-48 w-32 flex-col items-center justify-start">
               {renderCompanion(avatar.layers.companion, avatar.layers.accentColor)}
               {renderHair(avatar.layers.hairStyle, avatar.layers.hairColor)}
               <div
-                className="absolute top-6 flex h-28 w-28 flex-col items-center rounded-[2.5rem] border-4 border-white/50 bg-gradient-to-b from-white via-white/90 to-white/70 shadow-lg"
+                className="absolute top-6 flex h-28 w-28 flex-col items-center rounded-[2.5rem] border-4 border-white/40 bg-gradient-to-b from-white via-white/90 to-white/70 shadow-lg"
                 style={{ backgroundColor: avatar.layers.skinTone }}
               >
-                <div className="mt-6 flex w-[4.5rem] items-center justify-center gap-3">
+                <div className="mt-5 flex w-[4.25rem] items-center justify-center gap-3">
                   {[0, 1].map((index) => (
                     <div key={index} className="relative h-5 w-5">
                       <span className={cn("absolute inset-0 rounded-full", EYE_STYLE.base)} />
@@ -220,7 +220,7 @@ export const StatsAvatar = memo(function StatsAvatar({
                     </div>
                   ))}
                 </div>
-                <div className="mt-3 h-1 w-12 rounded-full bg-black/10" />
+                <div className="mt-2.5 h-1 w-12 rounded-full bg-black/10" />
                 <div className="mt-3 flex w-20 items-center justify-between">
                   <span
                     className="h-2.5 w-6 rounded-full"
@@ -231,39 +231,39 @@ export const StatsAvatar = memo(function StatsAvatar({
                     style={{ backgroundColor: avatar.layers.accentColor, opacity: 0.3 }}
                   />
                 </div>
-                <div className="mt-4 h-2 w-14 rounded-full bg-black/15" />
+                <div className="mt-3.5 h-2 w-14 rounded-full bg-black/15" />
                 {renderFaceMark(avatar.layers.faceMark, avatar.layers.accentColor)}
               </div>
               {renderAccessory(avatar.layers.accessory, avatar.layers.accentColor)}
               <div
-                className="absolute bottom-0 h-28 w-32 rounded-[2.75rem] border-4 border-white/35 shadow-inner"
+                className="absolute bottom-0 h-24 w-28 rounded-[2.5rem] border-4 border-white/30 shadow-inner"
                 style={{ backgroundColor: avatar.layers.outfitColor }}
               />
               <div
-                className="absolute bottom-7 h-4 w-24 rounded-full opacity-90"
+                className="absolute bottom-6 h-4 w-24 rounded-full opacity-90"
                 style={{ backgroundColor: avatar.layers.accentColor }}
               />
               {avatar.layers.outfitAccent === "cloak" && (
-                <div className="absolute -bottom-3 h-16 w-40 rounded-full bg-gradient-to-br from-rose-200/20 via-transparent to-transparent blur-lg" />
+                <div className="absolute -bottom-2 h-14 w-36 rounded-full bg-gradient-to-br from-rose-200/20 via-transparent to-transparent blur-lg" />
               )}
               {avatar.layers.outfitAccent === "armor" && (
-                <div className="absolute bottom-2 h-20 w-28 rounded-[2rem] border border-purple-200/20 bg-purple-900/30" />
+                <div className="absolute bottom-1 h-[4.5rem] w-24 rounded-[2rem] border border-purple-200/20 bg-purple-900/30" />
               )}
               {avatar.layers.outfitAccent === "tech" && (
-                <div className="absolute bottom-2 h-[4.5rem] w-[6.5rem] rounded-[2.2rem] border border-white/20 bg-white/10">
-                  <div className="absolute inset-x-6 top-4 h-[2px] bg-white/30" />
-                  <div className="absolute inset-x-8 top-8 h-[2px] bg-white/20" />
+                <div className="absolute bottom-1 h-[4.25rem] w-[6rem] rounded-[2.1rem] border border-white/20 bg-white/10">
+                  <div className="absolute inset-x-6 top-3.5 h-[2px] bg-white/30" />
+                  <div className="absolute inset-x-7 top-7 h-[2px] bg-white/20" />
                 </div>
               )}
               {avatar.layers.outfitAccent === "street" && (
-                <div className="absolute bottom-2 h-20 w-[7.5rem] rounded-[2.2rem] bg-gradient-to-r from-slate-900/40 via-black/20 to-transparent" />
+                <div className="absolute bottom-1 h-[4.5rem] w-[7rem] rounded-[2.1rem] bg-gradient-to-r from-slate-900/40 via-black/20 to-transparent" />
               )}
             </div>
           </div>
 
-          <div className="relative flex w-full flex-col items-center gap-3">
+          <div className="flex flex-col items-center gap-3">
             <div className="flex flex-wrap items-center justify-center gap-2">
-              <span className="rounded-full bg-black/40 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-white/80 backdrop-blur">
+              <span className="rounded-full bg-black/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.25em] text-white/80 backdrop-blur">
                 Level {level}
               </span>
               <span
@@ -277,11 +277,11 @@ export const StatsAvatar = memo(function StatsAvatar({
                 {definition.label}
               </span>
             </div>
-            <div className="flex flex-col items-center">
-              <h3 className="text-xl font-semibold tracking-wide text-white">
+            <div className="flex flex-col items-center gap-1">
+              <h3 className="text-lg font-semibold tracking-wide text-white">
                 {avatar.label}
               </h3>
-              <p className="mt-1 max-w-[18rem] text-sm text-white/70">
+              <p className="max-w-[14rem] text-xs text-white/70 sm:max-w-[16rem] sm:text-sm">
                 {avatar.description}
               </p>
             </div>
@@ -289,7 +289,7 @@ export const StatsAvatar = memo(function StatsAvatar({
         </div>
       </div>
 
-      <div className="absolute -bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/70 px-4 py-2 text-xs font-semibold text-white shadow-[0_20px_40px_-25px_rgba(0,0,0,0.75)] backdrop-blur sm:-bottom-4">
+      <div className="mt-4 flex items-center gap-2 rounded-full bg-black/70 px-4 py-2 text-xs font-semibold text-white shadow-[0_20px_40px_-25px_rgba(0,0,0,0.75)] backdrop-blur">
         <span>🔥 Streak</span>
         <span className="text-sm text-primary-200">{streakLabel}</span>
       </div>
