@@ -11,10 +11,43 @@ Radicale CalDAV server.
 - Docker and Docker Compose installed
 - At least 4 GB of RAM and 10 GB of free disk space
 
+## Download the code onto your Raspberry Pi
+
+SSH into your Pi and clone the repository (replace the URL with your fork if
+needed):
+
+```bash
+git clone https://github.com/fluidcalendar/fluid-calendar.git
+cd fluid-calendar
+```
+
+If you prefer downloading a release archive instead of using Git, grab the
+latest tarball from GitHub and extract it on the device:
+
+```bash
+curl -L -o fluid-calendar.tar.gz \
+  https://github.com/fluidcalendar/fluid-calendar/archive/refs/heads/main.tar.gz
+tar -xf fluid-calendar.tar.gz
+cd fluid-calendar-main
+# optional: mv fluid-calendar-main fluid-calendar && cd fluid-calendar
+```
+
+## Configure environment variables
+
+The container reads its defaults from environment variables. Create a file that
+stores the credentials you want to use (you can keep the defaults for testing):
+
+```bash
+cp docs/examples/pi.env.example .env.pi
+nano .env.pi
+```
+
+Update the values in `.env.pi` as desired, then save the file.
+
 ## Build the multi-service image
 
-Clone the repository on the Raspberry Pi and run one of the following commands
-from the project root:
+From the project root, build the Docker image that bundles FluidCalendar,
+PostgreSQL, and Radicale:
 
 ```bash
 docker build -f docker/pi/Dockerfile -t fluid-calendar-pi .
@@ -27,7 +60,10 @@ Alternatively, use the provided Compose file to build and run in a single step
 with persistent volumes already configured:
 
 ```bash
-docker compose -f docker-compose.pi.yml up -d --build
+docker compose \
+  -f docker-compose.pi.yml \
+  --env-file .env.pi \
+  up -d --build
 ```
 
 ## Run the container
@@ -43,13 +79,9 @@ Start the container and mount the data directories:
 ```bash
 docker run -d \
   --name fluidcalendar \
+  --env-file .env.pi \
   -p 3000:3000 \
   -p 5232:5232 \
-  -e POSTGRES_USER=fluid \
-  -e POSTGRES_PASSWORD=fluid \
-  -e POSTGRES_DB=fluid_calendar \
-  -e RADICALE_USERNAME=fluid \
-  -e RADICALE_PASSWORD=fluid \
   -v ~/fluidcalendar-data/postgres:/var/lib/postgresql \
   -v ~/fluidcalendar-data/radicale:/var/lib/radicale \
   fluid-calendar-pi
@@ -95,8 +127,27 @@ Mount this directory to persist calendar data between container restarts.
 ## Stopping the container
 
 ```bash
+docker compose -f docker-compose.pi.yml down
+```
+
+If you used `docker run`, stop and remove the single container instead:
+
+```bash
 docker stop fluidcalendar && docker rm fluidcalendar
 ```
 
 Stopping the container gracefully shuts down the Node.js server, Radicale, and
 PostgreSQL.
+
+## Update to a newer version later on
+
+When new commits land upstream, pull the updates and rebuild:
+
+```bash
+cd /path/to/fluid-calendar
+git pull
+docker compose -f docker-compose.pi.yml --env-file .env.pi up -d --build
+```
+
+Docker Compose will recreate the container while keeping the PostgreSQL and
+Radicale volumes intact.
