@@ -18,6 +18,22 @@ RADICALE_LISTEN_HOST="${RADICALE_LISTEN_HOST:-127.0.0.1}"
 RADICALE_LISTEN_PORT="${RADICALE_LISTEN_PORT:-5232}"
 RADICALE_START_TIMEOUT="${RADICALE_START_TIMEOUT:-30}"
 RADICALE_LOG_FILE="${RADICALE_LOG_FILE:-${APP_STATE_DIR}/logs/radicale.log}"
+RADICALE_STORAGE_TYPE="${RADICALE_STORAGE_TYPE:-auto}"
+RADICALE_STORAGE_CANDIDATES="${RADICALE_STORAGE_CANDIDATES:-multifilesystem filesystem}"
+RADICALE_PYTHON_BIN="${RADICALE_PYTHON_BIN:-}"
+
+RADICALE_PYTHON="${RADICALE_PYTHON_BIN}"
+if [ -z "${RADICALE_PYTHON}" ]; then
+  local_candidate_python="$(dirname "${RADICALE_BIN}")/python"
+  if [ -x "${local_candidate_python}" ]; then
+    RADICALE_PYTHON="${local_candidate_python}"
+  else
+    RADICALE_PYTHON="python3"
+  fi
+elif [ ! -x "${RADICALE_PYTHON}" ]; then
+  echo "Configured RADICALE_PYTHON_BIN (${RADICALE_PYTHON}) is not executable. Falling back to python3." >&2
+  RADICALE_PYTHON="python3"
+fi
 
 APP_STATE_DIR="${APP_STATE_DIR:-/var/lib/fluidcalendar}"
 NEXTAUTH_SECRET_FILE="${NEXTAUTH_SECRET_FILE:-${APP_STATE_DIR}/nextauth_secret}"
@@ -156,6 +172,97 @@ if id "${RADICALE_RUN_USER}" >/dev/null 2>&1; then
   fi
   chown "${RADICALE_RUN_USER}:${RADICALE_RUN_GROUP}" "${RADICALE_LOG_FILE}"
   chmod 640 "${RADICALE_LOG_FILE}"
+fi
+
+configure_radicale_storage_backend() {
+  local -a candidate_types=()
+  if [ "${RADICALE_STORAGE_TYPE}" != "auto" ]; then
+    candidate_types=("${RADICALE_STORAGE_TYPE}")
+  elif [ -n "${RADICALE_STORAGE_CANDIDATES:-}" ]; then
+    # shellcheck disable=SC2206
+    candidate_types=(${RADICALE_STORAGE_CANDIDATES})
+  else
+    candidate_types=("multifilesystem" "filesystem")
+  fi
+
+  local selected_type=""
+  for candidate in "${candidate_types[@]}"; do
+    candidate="${candidate//[[:space:]]/}"
+    if [ -z "${candidate}" ]; then
+      continue
+    fi
+    if "${RADICALE_PYTHON}" - <<'PY' "${candidate}" >/dev/null 2>&1; then
+import importlib
+import sys
+
+module = sys.argv[1]
+try:
+    import radicale  # noqa: F401
+except ModuleNotFoundError:
+    raise SystemExit(2)
+
+try:
+    importlib.import_module(f"radicale.storage.{module}")
+except ModuleNotFoundError:
+    raise SystemExit(1)
+PY
+      selected_type="${candidate}"
+      break
+    fi
+  done
+
+  if [ -z "${selected_type}" ]; then
+    echo "Unable to locate a compatible Radicale storage backend. Checked candidates: ${candidate_types[*]}" >&2
+    "${RADICALE_PYTHON}" - <<'PY' 1>&2 || true
+import pkgutil
+
+try:
+    import radicale.storage
+except ModuleNotFoundError:
+    print("radicale package is not available in the selected interpreter.")
+    raise SystemExit(0)
+
+modules = sorted(name for _, name, _ in pkgutil.iter_modules(radicale.storage.__path__))
+if modules:
+    print("Discovered radicale.storage modules:", ", ".join(modules))
+else:
+    print("No modules found under radicale.storage.")
+PY
+    return 1
+  fi
+
+  if ! "${RADICALE_PYTHON}" - <<'PY' "${RADICALE_CONFIG}" "${selected_type}" "${RADICALE_STORAGE}"
+import configparser
+import sys
+
+config_path, storage_type, storage_dir = sys.argv[1:4]
+
+parser = configparser.ConfigParser()
+parser.read(config_path)
+
+if "storage" not in parser:
+    parser["storage"] = {}
+
+parser["storage"]["type"] = storage_type
+
+if storage_type.endswith("filesystem"):
+    parser["storage"]["filesystem_folder"] = storage_dir
+
+with open(config_path, "w", encoding="utf-8") as config_file:
+    parser.write(config_file)
+PY
+  then
+    echo "Failed to update Radicale configuration with storage backend ${selected_type}." >&2
+    return 1
+  fi
+
+  RADICALE_SELECTED_STORAGE_TYPE="${selected_type}"
+  echo "Configured Radicale storage backend '${RADICALE_SELECTED_STORAGE_TYPE}' with data root ${RADICALE_STORAGE}."
+}
+
+if ! configure_radicale_storage_backend; then
+  echo "Radicale storage configuration failed. Exiting." >&2
+  exit 1
 fi
 
 start_radicale() {

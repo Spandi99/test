@@ -140,6 +140,9 @@ user on first start. The following environment variables control the defaults:
 | `RADICALE_RUN_USER` | Unix user the Radicale service runs as (also owns `/var/lib/radicale`) | `radicale` |
 | `RADICALE_RUN_GROUP` | Group paired with `RADICALE_RUN_USER` | `radicale` |
 | `RADICALE_BIN` | Absolute path to the Radicale executable inside the container | `/opt/radicale/bin/radicale` |
+| `RADICALE_PYTHON_BIN` | Python interpreter used to inspect Radicale plugins | derived from `RADICALE_BIN` |
+| `RADICALE_STORAGE_TYPE` | Force a specific Radicale storage backend (`auto` enables detection) | `auto` |
+| `RADICALE_STORAGE_CANDIDATES` | Space-delimited list of backends probed when `RADICALE_STORAGE_TYPE=auto` | `"multifilesystem filesystem"` |
 | `RADICALE_LISTEN_HOST` | Hostname the health check probes while starting Radicale | `127.0.0.1` |
 | `RADICALE_LISTEN_PORT` | Port the entrypoint waits on before continuing startup | `5232` |
 | `RADICALE_START_TIMEOUT` | Seconds to wait for Radicale to open the listening port | `30` |
@@ -160,22 +163,26 @@ account:
 - **Username/Password:** values from `RADICALE_USERNAME` and `RADICALE_PASSWORD`
 
 The Radicale instance stores calendars under `/var/lib/radicale/collections`.
-Mount this directory to persist calendar data between container restarts. The
-Radicale configuration explicitly selects the builtin `filesystem` backend so
-the bundled Python environment always loads the correct storage plugin even
-when entry-point discovery is restricted on the Pi. During startup the
-entrypoint now launches Radicale via
-`/opt/radicale/bin/radicale`, records all stdout/stderr in
-`${APP_STATE_DIR}/logs/radicale.log`, waits for the service to open
-`${RADICALE_LISTEN_HOST}:${RADICALE_LISTEN_PORT}`, and bails out early if the
-process exits unexpectedly. If the bundled `runuser` utility is unavailable the
-entrypoint automatically falls back to `su` so Radicale still runs under the
-dedicated `radicale` account. Whenever the readiness probe times out, the last
-log lines are printed to the container logs to make troubleshooting obvious
-before the Node.js server starts. The entrypoint also continues to repair the
-owner and permissions of the Radicale storage, credentials file, and log file
-to match `RADICALE_RUN_USER`, preventing "permission denied" errors when
-switching between versions or after restoring backups.
+Mount this directory to persist calendar data between container restarts. On
+startup the entrypoint now inspects the Radicale installation with the
+configured Python interpreter and picks the first available backend from the
+`RADICALE_STORAGE_CANDIDATES` list (by default `multifilesystem`, falling back
+to `filesystem`). Setting `RADICALE_STORAGE_TYPE` to a specific value bypasses
+autodetection entirely. Once the backend is determined the entrypoint rewrites
+`/etc/radicale/config` accordingly so Radicale starts with a compatible storage
+module even if certain plugins are missing on older Pi images. The entrypoint
+then launches Radicale via `/opt/radicale/bin/radicale`, records
+all stdout/stderr in `${APP_STATE_DIR}/logs/radicale.log`, waits for the
+service to open `${RADICALE_LISTEN_HOST}:${RADICALE_LISTEN_PORT}`, and bails out
+early if the process exits unexpectedly. If the bundled `runuser` utility is
+unavailable the entrypoint automatically falls back to `su` so Radicale still
+runs under the dedicated `radicale` account. Whenever the readiness probe times
+out, the last log lines are printed to the container logs to make
+troubleshooting obvious before the Node.js server starts. The entrypoint also
+continues to repair the owner and permissions of the Radicale storage,
+credentials file, and log file to match `RADICALE_RUN_USER`, preventing
+"permission denied" errors when switching between versions or after restoring
+backups.
 
 ## Stopping the container
 
