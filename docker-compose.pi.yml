@@ -1,0 +1,24 @@
+services:
+  fluidcalendar:
+    build:
+      context: .
+      dockerfile: docker/pi/Dockerfile
+    image: fluid-calendar:pi
+    ports:
+      - "3000:3000"
+      - "5232:5232"
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fluid}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fluid}
+      POSTGRES_DB: ${POSTGRES_DB:-fluid_calendar}
+      RADICALE_USERNAME: ${RADICALE_USERNAME:-fluid}
+      RADICALE_PASSWORD: ${RADICALE_PASSWORD:-fluid}
+    volumes:
+      - postgres_pi_data:/var/lib/postgresql
+      - radicale_pi_data:/var/lib/radicale
+    restart: unless-stopped
+
+volumes:
+  postgres_pi_data:
+  radicale_pi_data:

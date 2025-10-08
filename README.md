@@ -44,6 +44,14 @@ Don't want to self-host? We're currently beta testing our hosted version at [Flu
 - Premium support
 - Advanced AI features
 
+## Self-hosting on Raspberry Pi with CalDAV
+
+Want to run FluidCalendar on a Raspberry Pi with everything in a single
+container? Check out the [Raspberry Pi guide](docs/raspberry-pi.md) for a
+Dockerfile and Docker Compose file that bundle the app, PostgreSQL, and a
+Radicale CalDAV server. The setup is ARM64-compatible and exposes the CalDAV
+endpoint so you can start using local calendars immediately.
+
 ## Features
 
 - 🤖 **Intelligent Task Scheduling** - Automatically schedule tasks based on your preferences and availability
