@@ -78,6 +78,14 @@ export async function POST(request: NextRequest) {
 
     const name = body.name.trim();
     const color = body.color;
+    const category =
+      typeof body.category === "string" && body.category.trim().length > 0
+        ? body.category.trim()
+        : undefined;
+    const statKey =
+      typeof body.statKey === "string" && body.statKey.trim().length > 0
+        ? body.statKey.trim()
+        : undefined;
 
     // Check if tag with same name already exists for this user
     const existingTag = await prisma.tag.findFirst({
@@ -98,6 +106,8 @@ export async function POST(request: NextRequest) {
       data: {
         name,
         color,
+        category,
+        statKey,
         // Associate the tag with the current user
         userId,
       },

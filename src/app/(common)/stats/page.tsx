@@ -84,20 +84,21 @@ export default function StatsPage() {
   };
 
   return (
-    <div className="flex h-full flex-col overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-6 pb-12">
-        <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
-          <Card className="relative overflow-hidden">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-3xl font-bold text-foreground">
+    <div className="relative flex h-full flex-col overflow-y-auto bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.25),_transparent_60%)]" />
+      <div className="relative mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 pb-24 pt-8 sm:px-6 lg:px-8">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">
+          <Card className="relative overflow-hidden border-white/10 bg-white/5 backdrop-blur">
+            <CardHeader className="space-y-3 pb-4">
+              <CardTitle className="text-3xl font-bold tracking-wide text-white">
                 Dein Charakter
               </CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Level dich hoch, indem du Aufgaben und Tagesrituale abschließt.
+              <p className="text-sm text-slate-200/80">
+                Sammle XP, forme deine Werte und halte deine Streak am Leben.
               </p>
             </CardHeader>
-            <CardContent className="grid gap-6 lg:grid-cols-[220px_1fr] lg:items-center">
-              <div className="flex justify-center lg:justify-start">
+            <CardContent className="grid gap-6 xl:grid-cols-[260px_minmax(0,1fr)] xl:items-center">
+              <div className="mx-auto flex max-w-xs justify-center">
                 <StatsAvatar
                   avatar={activeAvatar}
                   dominantStat={dominantStat}
@@ -111,21 +112,27 @@ export default function StatsPage() {
                   xpForNextLevel={Math.round(xpForNextLevel)}
                   lifetimeXp={Math.round(lifetimeXp)}
                 />
-                <div className="grid gap-3 rounded-lg border border-border/60 bg-muted/20 p-4 text-sm text-muted-foreground md:grid-cols-2">
+                <div className="grid gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-200/80 shadow-inner md:grid-cols-2">
                   <div>
-                    <span className="font-semibold text-foreground">Aktueller Fokus</span>
-                    <p>{STAT_DEFINITIONS[dominantStat].description}</p>
+                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-200/90">
+                      Aktueller Fokus
+                    </span>
+                    <p className="mt-1 text-sm text-slate-100/90">
+                      {STAT_DEFINITIONS[dominantStat].description}
+                    </p>
                   </div>
                   <div>
-                    <p className="font-semibold text-foreground">Streak</p>
-                    <p>
-                      {currentStreak} Tage in Folge · Bester Lauf: {longestStreak} Tage
+                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-200/90">
+                      Streak
+                    </span>
+                    <p className="mt-1 text-sm text-slate-100/90">
+                      {currentStreak} Tage in Folge · Rekord: {longestStreak} Tage
                     </p>
                   </div>
                 </div>
-                <div className="space-y-2 rounded-lg border border-border/60 bg-background/70 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Avatar auswählen
+                <div className="space-y-3 rounded-2xl border border-white/10 bg-slate-950/50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-300/70">
+                    Avatar Loadout
                   </p>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {AVATAR_PRESETS.map((preset) => {
@@ -138,32 +145,30 @@ export default function StatsPage() {
                           onClick={() => handleSelectAvatar(preset.id)}
                           disabled={!isUnlocked}
                           className={cn(
-                            "flex items-center gap-3 rounded-lg border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-primary",
-                            isActive
-                              ? "border-primary/60 bg-primary/10"
-                              : "border-border/60 bg-background hover:border-primary/40",
+                            "group flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3 text-left transition",
+                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400",
+                            isActive && "border-sky-300/70 bg-sky-500/10 shadow-lg",
                             !isUnlocked && "cursor-not-allowed opacity-50"
                           )}
                         >
                           <div
                             className={cn(
-                              "h-10 w-10 rounded-full border-2 border-white/60 shadow-inner",
-                              "bg-gradient-to-br",
+                              "flex h-12 w-12 items-center justify-center rounded-xl border border-white/20 bg-gradient-to-br text-xl text-white",
                               preset.layers.background
                             )}
-                          />
-                          <div className="flex flex-col">
-                            <span className="text-sm font-semibold text-foreground">
+                          >
+                            <span aria-hidden>{STAT_DEFINITIONS[dominantStat].emoji}</span>
+                          </div>
+                          <div className="flex flex-1 flex-col">
+                            <span className="text-sm font-semibold text-white">
                               {preset.label}
                             </span>
-                            <span className="text-xs text-muted-foreground">
+                            <span className="text-xs text-slate-200/80">
                               {preset.description}
                             </span>
                           </div>
-                          {!isUnlocked && (
-                            <span className="ml-auto text-xs text-muted-foreground" aria-hidden>
-                              🔒
-                            </span>
+                          {isActive && (
+                            <span className="text-xs text-sky-300">Aktiv</span>
                           )}
                         </button>
                       );
@@ -174,13 +179,13 @@ export default function StatsPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="border-white/10 bg-white/5 backdrop-blur">
             <CardHeader className="pb-4">
-              <CardTitle className="text-2xl font-semibold">
+              <CardTitle className="text-2xl font-semibold text-white">
                 Statübersicht
               </CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Jeder Wert wächst mit den passenden Aktivitäten.
+              <p className="text-sm text-slate-200/80">
+                Jeder Wert wächst mit deinen passenden Quests.
               </p>
             </CardHeader>
             <CardContent className="grid gap-3">
@@ -190,29 +195,37 @@ export default function StatsPage() {
                 return (
                   <div
                     key={key}
-                    className="rounded-lg border border-border/70 bg-background/60 p-4 shadow-sm"
+                    className="rounded-2xl border border-white/10 bg-slate-950/40 p-4 shadow-lg shadow-black/30"
                   >
-                    <div className="flex items-center justify-between gap-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex flex-1 items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-xl">
+                        <div
+                          className={cn(
+                            "flex h-12 w-12 items-center justify-center rounded-xl bg-white/10 text-2xl",
+                            definition.accentColor
+                          )}
+                        >
                           <span aria-hidden>{definition.emoji}</span>
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-foreground">
+                          <p className="text-sm font-semibold text-white">
                             {definition.label}
                           </p>
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-xs text-slate-200/80">
                             {definition.description}
                           </p>
                         </div>
                       </div>
-                      <div className="text-3xl font-bold text-foreground">
-                        {Math.round(value)}
+                      <div className="text-lg font-semibold text-slate-100">
+                        {value}
                       </div>
                     </div>
-                    <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted">
+                    <div className="mt-3 h-2 rounded-full bg-white/10">
                       <div
-                        className="h-full rounded-full bg-gradient-to-r from-primary/80 via-primary to-primary/60"
+                        className={cn(
+                          "h-full rounded-full bg-gradient-to-r",
+                          definition.gradient
+                        )}
                         style={{ width: `${percentage}%` }}
                       />
                     </div>
@@ -223,22 +236,15 @@ export default function StatsPage() {
           </Card>
         </div>
 
-        <Card>
-          <CardContent className="pt-6">
-            <StatsDailyActivities
-              activities={todaysActivities}
-              completedIds={completedToday}
-              onComplete={handleCompleteActivity}
-              weekdayLabel={weekdayLabel}
-            />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <StatsHistory events={history} />
-          </CardContent>
-        </Card>
+        <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+          <StatsDailyActivities
+            activities={todaysActivities}
+            completedIds={completedToday}
+            weekdayLabel={weekdayLabel}
+            onComplete={handleCompleteActivity}
+          />
+          <StatsHistory events={history} />
+        </div>
       </div>
     </div>
   );

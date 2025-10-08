@@ -67,9 +67,7 @@ const INITIAL_STATS: Record<StatKey, number> = {
 };
 
 const DEFAULT_AVATAR_ID = AVATAR_PRESETS[0]?.id ?? "trailblazer";
-const INITIAL_UNLOCKED_AVATARS = AVATAR_PRESETS.slice(0, 2).map(
-  (preset) => preset.id
-);
+const INITIAL_UNLOCKED_AVATARS = AVATAR_PRESETS.map((preset) => preset.id);
 
 function generateId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {

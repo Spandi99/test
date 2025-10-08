@@ -8,6 +8,12 @@ export interface AvatarLayer {
   hairColor: string;
   outfitColor: string;
   accentColor: string;
+  aura?: string;
+  hairStyle?: "undercut" | "braids" | "mohawk" | "waves";
+  accessory?: "visor" | "glasses" | "earrings" | "hood" | "none";
+  outfitAccent?: "tech" | "cloak" | "armor" | "street";
+  faceMark?: "scar" | "paint" | "freckles" | "none";
+  companion?: "spark" | "spirit" | "drone" | "flare";
 }
 
 export interface AvatarOption {

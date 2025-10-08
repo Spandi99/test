@@ -146,11 +146,13 @@ export async function POST(request: NextRequest) {
         userId,
         isRecurring: !!recurrenceRule,
         recurrenceRule: standardizedRecurrenceRule,
-        ...(tagIds && {
-          tags: {
-            connect: tagIds.map((id: string) => ({ id })),
-          },
-        }),
+        ...(Array.isArray(tagIds) && tagIds.length > 0
+          ? {
+              tags: {
+                connect: tagIds.map((id: string) => ({ id })),
+              },
+            }
+          : {}),
       },
       include: {
         tags: true,

@@ -81,7 +81,7 @@ export default function RootLayout({
               onClose={() => setShortcutsOpen(false)}
             />
             <AppNav />
-            <main className="relative flex-1">
+            <main className="relative flex-1 pb-20 md:pb-0">
               <NotificationProvider>{children}</NotificationProvider>
             </main>
             <Toaster />
