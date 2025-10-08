@@ -42,7 +42,17 @@ cp docs/examples/pi.env.example .env.pi
 nano .env.pi
 ```
 
-Update the values in `.env.pi` as desired, then save the file.
+Update the values in `.env.pi` as desired, then save the file. Be sure to set:
+
+- `NEXTAUTH_URL` – the public URL (including protocol and port) where you will
+  access FluidCalendar, e.g. `http://<pi-ip>:3000`
+- `NEXT_PUBLIC_APP_URL` – usually the same as `NEXTAUTH_URL`
+- `NEXTAUTH_SECRET` – a long random string (generate with
+  `openssl rand -base64 32` or `head -c 32 /dev/urandom | base64`)
+
+If you leave `NEXTAUTH_SECRET` empty, the container will generate one on first
+boot and store it inside the `fluidcalendar_state` volume so sessions persist
+across restarts.
 
 ## Build the multi-service image
 
@@ -66,12 +76,19 @@ docker compose \
   up -d --build
 ```
 
+Docker Compose automatically provisions named volumes for PostgreSQL,
+Radicale, and FluidCalendar's app state (`fluidcalendar_state`) so your
+database, calendars, and NextAuth secret survive rebuilds.
+
 ## Run the container
 
-Create a directory to persist database and CalDAV data:
+Create a directory to persist the app secret, database, and CalDAV data:
 
 ```bash
-mkdir -p ~/fluidcalendar-data/postgres ~/fluidcalendar-data/radicale
+mkdir -p \
+  ~/fluidcalendar-data/app \
+  ~/fluidcalendar-data/postgres \
+  ~/fluidcalendar-data/radicale
 ```
 
 Start the container and mount the data directories:
@@ -84,6 +101,7 @@ docker run -d \
   -p 5232:5232 \
   -v ~/fluidcalendar-data/postgres:/var/lib/postgresql \
   -v ~/fluidcalendar-data/radicale:/var/lib/radicale \
+  -v ~/fluidcalendar-data/app:/var/lib/fluidcalendar \
   fluid-calendar-pi
 ```
 
@@ -111,6 +129,9 @@ user on first start. The following environment variables control the defaults:
 | `RADICALE_PASSWORD` | Radicale Basic Auth password | `fluid` |
 | `RADICALE_BASE_URL` | Internal CalDAV base URL used by the app | `http://localhost:5232` |
 | `DATABASE_URL` | Prisma connection string (auto-generated if omitted) | `postgresql://fluid:fluid@127.0.0.1:5432/fluid_calendar?schema=public` |
+| `NEXTAUTH_URL` | Public URL for OAuth callbacks and NextAuth | `http://localhost:3000` |
+| `NEXT_PUBLIC_APP_URL` | Public URL exposed to the browser | `http://localhost:3000` |
+| `NEXTAUTH_SECRET` | Secret for signing NextAuth tokens | generated & persisted automatically |
 
 ## Connect FluidCalendar to the bundled CalDAV server
 

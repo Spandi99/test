@@ -40,6 +40,7 @@ RUN pip3 install --no-cache-dir radicale
 
 COPY docker/pi/radicale.config /etc/radicale/config
 RUN mkdir -p /var/lib/radicale/collections
+RUN mkdir -p /var/lib/fluidcalendar
 
 WORKDIR /app
 
@@ -58,6 +59,7 @@ RUN chmod +x /usr/local/bin/pidev-entrypoint.sh
 
 EXPOSE 3000 5232 5432
 
+ENV APP_STATE_DIR=/var/lib/fluidcalendar
 ENV POSTGRES_USER=fluid
 ENV POSTGRES_PASSWORD=fluid
 ENV POSTGRES_DB=fluid_calendar
