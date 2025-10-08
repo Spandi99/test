@@ -39,13 +39,17 @@ RUN apt-get update && \
       ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
+RUN groupadd --system radicale \
+    && useradd --system --gid radicale --home-dir /var/lib/radicale --no-create-home radicale
+
 RUN python3 -m venv /opt/radicale \
     && /opt/radicale/bin/pip install --no-cache-dir --upgrade pip \
     && /opt/radicale/bin/pip install --no-cache-dir "radicale[bcrypt]" \
     && ln -s /opt/radicale/bin/radicale /usr/local/bin/radicale
 
 COPY docker/pi/radicale.config /etc/radicale/config
-RUN mkdir -p /var/lib/radicale/collections
+RUN mkdir -p /var/lib/radicale/collections \
+    && chown -R radicale:radicale /var/lib/radicale
 RUN mkdir -p /var/lib/fluidcalendar
 
 WORKDIR /app

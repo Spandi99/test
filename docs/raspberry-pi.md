@@ -137,6 +137,8 @@ user on first start. The following environment variables control the defaults:
 | `RADICALE_USERNAME` | Radicale Basic Auth username | `fluid` |
 | `RADICALE_PASSWORD` | Radicale Basic Auth password | `fluid` |
 | `RADICALE_BASE_URL` | Internal CalDAV base URL used by the app | `http://localhost:5232` |
+| `RADICALE_RUN_USER` | Unix user the Radicale service runs as (also owns `/var/lib/radicale`) | `radicale` |
+| `RADICALE_RUN_GROUP` | Group paired with `RADICALE_RUN_USER` | `radicale` |
 | `DATABASE_URL` | Prisma connection string (auto-generated if omitted) | `postgresql://fluid:fluid@127.0.0.1:5432/fluid_calendar?schema=public` |
 | `NEXTAUTH_URL` | Public URL for OAuth callbacks and NextAuth | `http://192.168.1.132:3000` |
 | `NEXT_PUBLIC_APP_URL` | Public URL exposed to the browser | `http://192.168.1.132:3000` |
@@ -153,7 +155,11 @@ account:
 - **Username/Password:** values from `RADICALE_USERNAME` and `RADICALE_PASSWORD`
 
 The Radicale instance stores calendars under `/var/lib/radicale/collections`.
-Mount this directory to persist calendar data between container restarts.
+Mount this directory to persist calendar data between container restarts. On
+startup the entrypoint automatically adjusts the owner and permissions of the
+Radicale storage and credentials file to match `RADICALE_RUN_USER`, preventing
+"permission denied" errors when switching between versions or after restoring
+backups.
 
 ## Stopping the container
 

@@ -11,6 +11,8 @@ RADICALE_PASSWORD="${RADICALE_PASSWORD:-fluid}"
 RADICALE_CONFIG="${RADICALE_CONFIG:-/etc/radicale/config}"
 RADICALE_USERS_FILE="${RADICALE_USERS_FILE:-/etc/radicale/users}"
 RADICALE_STORAGE="${RADICALE_STORAGE:-/var/lib/radicale/collections}"
+RADICALE_RUN_USER="${RADICALE_RUN_USER:-radicale}"
+RADICALE_RUN_GROUP="${RADICALE_RUN_GROUP:-${RADICALE_RUN_USER}}"
 
 APP_STATE_DIR="${APP_STATE_DIR:-/var/lib/fluidcalendar}"
 NEXTAUTH_SECRET_FILE="${NEXTAUTH_SECRET_FILE:-${APP_STATE_DIR}/nextauth_secret}"
@@ -134,9 +136,25 @@ else
   htpasswd -Bb "${RADICALE_USERS_FILE}" "${RADICALE_USERNAME}" "${RADICALE_PASSWORD}"
 fi
 
+if id "${RADICALE_RUN_USER}" >/dev/null 2>&1; then
+  if [ -d "${RADICALE_STORAGE%/}" ]; then
+    chown -R "${RADICALE_RUN_USER}:${RADICALE_RUN_GROUP}" "${RADICALE_STORAGE%/}"
+    chmod -R u+rwX,g+rwX,o-rwx "${RADICALE_STORAGE%/}"
+  fi
+  if [ -f "${RADICALE_USERS_FILE}" ]; then
+    chown "${RADICALE_RUN_USER}:${RADICALE_RUN_GROUP}" "${RADICALE_USERS_FILE}"
+    chmod 640 "${RADICALE_USERS_FILE}"
+  fi
+fi
+
 # Start Radicale in background
-radicale --config "${RADICALE_CONFIG}" &
-RADICALE_PID=$!
+if id "${RADICALE_RUN_USER}" >/dev/null 2>&1 && [ "$(id -un)" != "${RADICALE_RUN_USER}" ]; then
+  su -s /bin/sh "${RADICALE_RUN_USER}" -c "radicale --config '${RADICALE_CONFIG}'" &
+  RADICALE_PID=$!
+else
+  radicale --config "${RADICALE_CONFIG}" &
+  RADICALE_PID=$!
+fi
 
 # Wait for PostgreSQL to accept connections
 until pg_isready -h 127.0.0.1 -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" >/dev/null 2>&1; do
