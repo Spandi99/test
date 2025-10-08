@@ -45,7 +45,8 @@ nano .env.pi
 Update the values in `.env.pi` as desired, then save the file. Be sure to set:
 
 - `NEXTAUTH_URL` – the public URL (including protocol and port) where you will
-  access FluidCalendar, e.g. `http://<pi-ip>:3000`
+  access FluidCalendar. For the dedicated Pi at `192.168.1.132`, use
+  `http://192.168.1.132:3000`.
 - `NEXT_PUBLIC_APP_URL` – usually the same as `NEXTAUTH_URL`
 - `NEXTAUTH_SECRET` – a long random string (generate with
   `openssl rand -base64 32` or `head -c 32 /dev/urandom | base64`)
@@ -129,8 +130,8 @@ user on first start. The following environment variables control the defaults:
 | `RADICALE_PASSWORD` | Radicale Basic Auth password | `fluid` |
 | `RADICALE_BASE_URL` | Internal CalDAV base URL used by the app | `http://localhost:5232` |
 | `DATABASE_URL` | Prisma connection string (auto-generated if omitted) | `postgresql://fluid:fluid@127.0.0.1:5432/fluid_calendar?schema=public` |
-| `NEXTAUTH_URL` | Public URL for OAuth callbacks and NextAuth | `http://localhost:3000` |
-| `NEXT_PUBLIC_APP_URL` | Public URL exposed to the browser | `http://localhost:3000` |
+| `NEXTAUTH_URL` | Public URL for OAuth callbacks and NextAuth | `http://192.168.1.132:3000` |
+| `NEXT_PUBLIC_APP_URL` | Public URL exposed to the browser | `http://192.168.1.132:3000` |
 | `NEXTAUTH_SECRET` | Secret for signing NextAuth tokens | generated & persisted automatically |
 
 ## Connect FluidCalendar to the bundled CalDAV server

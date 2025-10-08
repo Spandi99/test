@@ -34,7 +34,7 @@ else
 fi
 
 if [ -z "${NEXTAUTH_URL:-}" ]; then
-  export NEXTAUTH_URL="http://localhost:3000"
+  export NEXTAUTH_URL="http://192.168.1.132:3000"
   echo "NEXTAUTH_URL not provided. Defaulting to ${NEXTAUTH_URL}."
 fi
 

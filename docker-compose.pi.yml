@@ -14,9 +14,9 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-fluid_calendar}
       RADICALE_USERNAME: ${RADICALE_USERNAME:-fluid}
       RADICALE_PASSWORD: ${RADICALE_PASSWORD:-fluid}
-      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://192.168.1.132:3000}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-}
-      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://192.168.1.132:3000}
     volumes:
       - postgres_pi_data:/var/lib/postgresql
       - radicale_pi_data:/var/lib/radicale
