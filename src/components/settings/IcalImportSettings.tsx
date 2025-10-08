@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import { Loader2, Upload, Link as LinkIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -15,6 +15,13 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 import { useCalendarStore } from "@/store/calendar";
 
@@ -31,8 +38,17 @@ export function IcalImportSettings() {
   const [color, setColor] = useState("#3b82f6");
   const [isImporting, setIsImporting] = useState(false);
   const [lastImported, setLastImported] = useState<ImportResponse | null>(null);
+  const [targetFeedId, setTargetFeedId] = useState<string>("new");
 
-  const { refreshEvents, refreshFeeds } = useCalendarStore();
+  const feeds = useCalendarStore((state) => state.feeds);
+  const refreshEvents = useCalendarStore((state) => state.refreshEvents);
+  const refreshFeeds = useCalendarStore((state) => state.refreshFeeds);
+
+  const importableFeeds = useMemo(
+    () =>
+      feeds.filter((feed) => feed.type === "CALDAV" || feed.type === "LOCAL"),
+    [feeds]
+  );
 
   const triggerImport = useCallback(
     async (payload: { icalData?: string; icalUrl?: string }) => {
@@ -49,8 +65,10 @@ export function IcalImportSettings() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            feedName: feedName.trim() || undefined,
-            color,
+            feedName:
+              targetFeedId === "new" ? feedName.trim() || undefined : undefined,
+            color: targetFeedId === "new" ? color : undefined,
+            feedId: targetFeedId !== "new" ? targetFeedId : undefined,
             ...payload,
           }),
         });
@@ -66,6 +84,11 @@ export function IcalImportSettings() {
           `Kalender „${data.feedName}“ wurde importiert. ${data.imported} Termine hinzugefügt.`
         );
 
+        if (targetFeedId === "new") {
+          setTargetFeedId(data.feedId);
+          setFeedName(data.feedName);
+        }
+
         await Promise.all([refreshFeeds(), refreshEvents()]);
       } catch (error) {
         console.error("Failed to import iCal data", error);
@@ -76,7 +99,7 @@ export function IcalImportSettings() {
         setIsImporting(false);
       }
     },
-    [color, feedName, refreshEvents, refreshFeeds]
+    [color, feedName, refreshEvents, refreshFeeds, targetFeedId]
   );
 
   const handleImportClick = () => {
@@ -92,7 +115,7 @@ export function IcalImportSettings() {
     try {
       const text = await file.text();
 
-      if (!feedName.trim()) {
+      if (targetFeedId === "new" && !feedName.trim()) {
         const inferredName = file.name.replace(/\.ics$/i, "");
         setFeedName(inferredName);
       }
@@ -125,6 +148,32 @@ export function IcalImportSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          <div className="space-y-2">
+            <Label htmlFor="target-feed">Zielkalender</Label>
+            <Select
+              value={targetFeedId}
+              onValueChange={setTargetFeedId}
+              disabled={isImporting}
+            >
+              <SelectTrigger id="target-feed">
+                <SelectValue placeholder="Kalender auswählen" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="new">Neuen lokalen Kalender anlegen</SelectItem>
+                {importableFeeds.map((feed) => (
+                  <SelectItem key={feed.id} value={feed.id}>
+                    {feed.name}
+                    {feed.type === "CALDAV" ? " (CalDAV)" : " (Lokal)"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-sm text-muted-foreground">
+              Wählen Sie einen bestehenden CalDAV- oder lokalen Kalender aus,
+              oder legen Sie einen neuen lokalen Kalender für den Import an.
+            </p>
+          </div>
+
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="feed-name">Name des Kalenders</Label>
@@ -133,7 +182,7 @@ export function IcalImportSettings() {
                 placeholder="z. B. Uni Stundenplan"
                 value={feedName}
                 onChange={(event) => setFeedName(event.target.value)}
-                disabled={isImporting}
+                disabled={isImporting || targetFeedId !== "new"}
               />
             </div>
             <div className="space-y-2">
@@ -143,7 +192,7 @@ export function IcalImportSettings() {
                 type="color"
                 value={color}
                 onChange={(event) => setColor(event.target.value)}
-                disabled={isImporting}
+                disabled={isImporting || targetFeedId !== "new"}
                 className="h-10 w-full cursor-pointer"
               />
             </div>

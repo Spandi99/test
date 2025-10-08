@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import ICAL from "ical.js";
-import { Prisma } from "@prisma/client";
 import { randomUUID } from "crypto";
 
 import { authenticateRequest } from "@/lib/auth/api-auth";
@@ -10,9 +9,12 @@ import { prisma } from "@/lib/prisma";
 
 const LOG_SOURCE = "import-ical-api";
 
+export const runtime = "nodejs";
+
 interface ImportPayload {
   feedName?: string;
   color?: string | null;
+  feedId?: string;
   icalData?: string;
   icalUrl?: string;
 }
@@ -122,7 +124,7 @@ function parseIcalData(icalData: string): ParsedCalendar {
           ? lastModifiedValue.toJSDate()
           : undefined,
         isMaster: !!recurrenceRule && !hasRecurrenceId,
-        isRecurring: !!recurrenceRule && !hasRecurrenceId,
+        isRecurring: !!recurrenceRule || hasRecurrenceId,
         masterUid: hasRecurrenceId ? baseUid : undefined,
       } satisfies ParsedEvent;
     });
@@ -160,6 +162,43 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    let targetFeed = null as Awaited<
+      ReturnType<typeof prisma.calendarFeed.findFirst>
+    >;
+
+    if (payload.feedId) {
+      targetFeed = await prisma.calendarFeed.findFirst({
+        where: {
+          id: payload.feedId,
+          OR: [
+            { userId: auth.userId },
+            {
+              account: {
+                userId: auth.userId,
+              },
+            },
+          ],
+        },
+      });
+
+      if (!targetFeed) {
+        return NextResponse.json(
+          { error: "Der ausgewählte Kalender wurde nicht gefunden" },
+          { status: 404 }
+        );
+      }
+
+      if (targetFeed.type !== "CALDAV" && targetFeed.type !== "LOCAL") {
+        return NextResponse.json(
+          {
+            error:
+              "In diesen Kalender können keine iCal-Termine importiert werden",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     let icalData = payload.icalData;
 
     if (!icalData && payload.icalUrl) {
@@ -192,78 +231,114 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const parsed = parseIcalData(icalData);
+    let parsed: ParsedCalendar;
+    try {
+      parsed = parseIcalData(icalData);
+    } catch (error) {
+      return NextResponse.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Die iCal-Daten konnten nicht verarbeitet werden",
+        },
+        { status: 400 }
+      );
+    }
+
+    const parsedCalendarName = parsed.calendarName
+      ? String(parsed.calendarName).trim()
+      : undefined;
 
     const feedName =
-      payload.feedName?.trim() || parsed.calendarName || "Importierter Kalender";
-    const feedColor = payload.color || parsed.calendarColor || null;
+      payload.feedName?.trim() || parsedCalendarName || "Importierter Kalender";
 
-    const feed = await prisma.calendarFeed.create({
-      data: {
-        name: feedName,
-        color: feedColor,
-        type: "LOCAL",
-        enabled: true,
-        userId: auth.userId,
-      },
-    });
-
-    const masterMap = new Map<string, string>();
-    let imported = 0;
-
-    const events = [...parsed.events].sort((a, b) => {
-      if (a.isMaster && !b.isMaster) return -1;
-      if (!a.isMaster && b.isMaster) return 1;
-      return 0;
-    });
-
-    for (const event of events) {
-      try {
-        const masterEventId = event.masterUid
-          ? masterMap.get(event.masterUid) || null
+    const desiredColor =
+      typeof payload.color === "string" && payload.color.trim().length > 0
+        ? payload.color.trim()
+        : parsed.calendarColor && String(parsed.calendarColor).trim().length > 0
+          ? String(parsed.calendarColor).trim()
           : null;
 
-        const createdEvent = await prisma.calendarEvent.create({
+    const { feed, imported } = await prisma.$transaction(async (tx) => {
+      const resolvedFeed =
+        targetFeed ??
+        (await tx.calendarFeed.create({
           data: {
-            feedId: feed.id,
-            externalEventId: event.externalEventId,
-            title: event.title,
-            description: event.description,
-            start: event.start,
-            end: event.end,
-            location: event.location,
-            isRecurring: event.isRecurring,
-            recurrenceRule: event.recurrenceRule,
-            allDay: event.allDay,
-            status: event.status,
-            sequence: event.sequence,
-            created: event.created,
-            lastModified: event.lastModified,
-            isMaster: event.isMaster,
-            masterEventId,
-            recurringEventId: event.masterUid || null,
-            organizer: Prisma.JsonNull,
-            attendees: Prisma.JsonNull,
+            name: feedName,
+            color: desiredColor,
+            type: "LOCAL",
+            enabled: true,
+            userId: auth.userId,
           },
-        });
+        }));
 
-        if (event.isMaster) {
-          masterMap.set(event.baseUid, createdEvent.id);
+      const masterMap = new Map<string, string>();
+      let importedCount = 0;
+
+      const events = [...parsed.events].sort((a, b) => {
+        if (a.isMaster && !b.isMaster) return -1;
+        if (!a.isMaster && b.isMaster) return 1;
+        return 0;
+      });
+
+      for (const event of events) {
+        try {
+          if (event.externalEventId) {
+            await tx.calendarEvent.deleteMany({
+              where: {
+                feedId: resolvedFeed.id,
+                externalEventId: event.externalEventId,
+              },
+            });
+          }
+
+          const masterEventId = event.masterUid
+            ? masterMap.get(event.masterUid) || null
+            : null;
+
+          const createdEvent = await tx.calendarEvent.create({
+            data: {
+              feedId: resolvedFeed.id,
+              externalEventId: event.externalEventId,
+              title: event.title,
+              description: event.description,
+              start: event.start,
+              end: event.end,
+              location: event.location,
+              isRecurring: event.isRecurring,
+              recurrenceRule: event.recurrenceRule,
+              allDay: event.allDay,
+              status: event.status,
+              sequence: event.sequence,
+              created: event.created,
+              lastModified: event.lastModified,
+              isMaster: event.isMaster,
+              masterEventId,
+              recurringEventId: event.masterUid || null,
+            },
+          });
+
+          if (event.isMaster) {
+            masterMap.set(event.baseUid, createdEvent.id);
+          }
+
+          importedCount += 1;
+        } catch (error) {
+          logger.error(
+            "Fehler beim Speichern eines Termins",
+            {
+              feedId: resolvedFeed.id,
+              externalEventId: event.externalEventId,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            LOG_SOURCE
+          );
         }
-
-        imported += 1;
-      } catch (error) {
-        logger.error(
-          "Fehler beim Speichern eines Termins",
-          {
-            feedId: feed.id,
-            externalEventId: event.externalEventId,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          LOG_SOURCE
-        );
       }
-    }
+
+      return { feed: resolvedFeed, imported: importedCount };
+    });
 
     logger.info(
       "iCal-Import abgeschlossen",
@@ -277,7 +352,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       feedId: feed.id,
       imported,
-      feedName,
+      feedName: feed.name,
     });
   } catch (error) {
     logger.error(
