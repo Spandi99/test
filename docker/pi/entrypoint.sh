@@ -17,11 +17,16 @@ RADICALE_BIN="${RADICALE_BIN:-/opt/radicale/bin/radicale}"
 RADICALE_LISTEN_HOST="${RADICALE_LISTEN_HOST:-127.0.0.1}"
 RADICALE_LISTEN_PORT="${RADICALE_LISTEN_PORT:-5232}"
 RADICALE_START_TIMEOUT="${RADICALE_START_TIMEOUT:-30}"
+RADICALE_LOG_FILE="${RADICALE_LOG_FILE:-${APP_STATE_DIR}/logs/radicale.log}"
 
 APP_STATE_DIR="${APP_STATE_DIR:-/var/lib/fluidcalendar}"
 NEXTAUTH_SECRET_FILE="${NEXTAUTH_SECRET_FILE:-${APP_STATE_DIR}/nextauth_secret}"
 
 mkdir -p "${APP_STATE_DIR}"
+mkdir -p "$(dirname "${RADICALE_LOG_FILE}")"
+
+: > "${RADICALE_LOG_FILE}"
+chmod 640 "${RADICALE_LOG_FILE}"
 
 if [ -z "${NEXTAUTH_SECRET:-}" ]; then
   if [ -s "${NEXTAUTH_SECRET_FILE}" ]; then
@@ -149,6 +154,8 @@ if id "${RADICALE_RUN_USER}" >/dev/null 2>&1; then
     chown "${RADICALE_RUN_USER}:${RADICALE_RUN_GROUP}" "${RADICALE_USERS_FILE}"
     chmod 640 "${RADICALE_USERS_FILE}"
   fi
+  chown "${RADICALE_RUN_USER}:${RADICALE_RUN_GROUP}" "${RADICALE_LOG_FILE}"
+  chmod 640 "${RADICALE_LOG_FILE}"
 fi
 
 start_radicale() {
@@ -159,26 +166,65 @@ start_radicale() {
     return 1
   fi
 
+  RADICALE_PID=
+  local radicale_launch_success=0
+
   if id "${RADICALE_RUN_USER}" >/dev/null 2>&1 && [ "$(id -un)" != "${RADICALE_RUN_USER}" ]; then
     if command -v runuser >/dev/null 2>&1; then
-      runuser -u "${RADICALE_RUN_USER}" -- "${radicale_cmd[@]}" &
-    else
-      su -s /bin/sh "${RADICALE_RUN_USER}" -c "$(printf '%q ' "${radicale_cmd[@]}")" &
+      set +e
+      runuser -u "${RADICALE_RUN_USER}" -- "${radicale_cmd[@]}" >>"${RADICALE_LOG_FILE}" 2>&1 &
+      RADICALE_PID=$!
+      radicale_launch_success=$?
+      set -e
+    fi
+
+    if [ ${radicale_launch_success} -ne 0 ] || [ -z "${RADICALE_PID:-}" ]; then
+      echo "runuser failed to start Radicale, falling back to su." >&2
+      set +e
+      su -s /bin/sh "${RADICALE_RUN_USER}" -c "exec $(printf '%q ' "${radicale_cmd[@]}")" >>"${RADICALE_LOG_FILE}" 2>&1 &
+      RADICALE_PID=$!
+      radicale_launch_success=$?
+      set -e
     fi
   else
-    "${radicale_cmd[@]}" &
+    "${radicale_cmd[@]}" >>"${RADICALE_LOG_FILE}" 2>&1 &
+    RADICALE_PID=$!
   fi
 
-  RADICALE_PID=$!
+  if [ ${radicale_launch_success} -ne 0 ]; then
+    echo "Failed to start Radicale process. Last log lines:" >&2
+    tail -n 40 "${RADICALE_LOG_FILE}" >&2 || true
+    return 1
+  fi
+
+  if ! command -v nc >/dev/null 2>&1; then
+    echo "nc command not available; skipping Radicale port probe." >&2
+    sleep 2
+    if ! kill -0 "${RADICALE_PID}" >/dev/null 2>&1; then
+      echo "Radicale exited unexpectedly. Last log lines:" >&2
+      tail -n 40 "${RADICALE_LOG_FILE}" >&2 || true
+      return 1
+    fi
+    return 0
+  fi
+
+  local -a probe_hosts=()
+  if [ -n "${RADICALE_LISTEN_HOST}" ]; then
+    probe_hosts+=("${RADICALE_LISTEN_HOST}")
+  fi
+  probe_hosts+=("127.0.0.1" "::1")
 
   for _ in $(seq 1 "${RADICALE_START_TIMEOUT}"); do
-    if nc -z "${RADICALE_LISTEN_HOST}" "${RADICALE_LISTEN_PORT}" >/dev/null 2>&1; then
-      echo "Radicale is listening on ${RADICALE_LISTEN_HOST}:${RADICALE_LISTEN_PORT}."
-      return 0
-    fi
+    for host in "${probe_hosts[@]}"; do
+      if nc -z "${host}" "${RADICALE_LISTEN_PORT}" >/dev/null 2>&1; then
+        echo "Radicale is listening on ${host}:${RADICALE_LISTEN_PORT}."
+        return 0
+      fi
+    done
 
     if ! kill -0 "${RADICALE_PID}" >/dev/null 2>&1; then
-      echo "Radicale exited before opening ${RADICALE_LISTEN_HOST}:${RADICALE_LISTEN_PORT}." >&2
+      echo "Radicale exited before opening port ${RADICALE_LISTEN_PORT}. Last log lines:" >&2
+      tail -n 40 "${RADICALE_LOG_FILE}" >&2 || true
       wait "${RADICALE_PID}" || true
       return 1
     fi
@@ -186,7 +232,8 @@ start_radicale() {
     sleep 1
   done
 
-  echo "Timed out waiting for Radicale to start on ${RADICALE_LISTEN_HOST}:${RADICALE_LISTEN_PORT}." >&2
+  echo "Timed out waiting for Radicale to start on port ${RADICALE_LISTEN_PORT}. Last log lines:" >&2
+  tail -n 40 "${RADICALE_LOG_FILE}" >&2 || true
   return 1
 }
 

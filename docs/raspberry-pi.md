@@ -143,6 +143,7 @@ user on first start. The following environment variables control the defaults:
 | `RADICALE_LISTEN_HOST` | Hostname the health check probes while starting Radicale | `127.0.0.1` |
 | `RADICALE_LISTEN_PORT` | Port the entrypoint waits on before continuing startup | `5232` |
 | `RADICALE_START_TIMEOUT` | Seconds to wait for Radicale to open the listening port | `30` |
+| `RADICALE_LOG_FILE` | Path where Radicale stdout/stderr is persisted | `${APP_STATE_DIR}/logs/radicale.log` |
 | `DATABASE_URL` | Prisma connection string (auto-generated if omitted) | `postgresql://fluid:fluid@127.0.0.1:5432/fluid_calendar?schema=public` |
 | `NEXTAUTH_URL` | Public URL for OAuth callbacks and NextAuth | `http://192.168.1.132:3000` |
 | `NEXT_PUBLIC_APP_URL` | Public URL exposed to the browser | `http://192.168.1.132:3000` |
@@ -160,18 +161,21 @@ account:
 
 The Radicale instance stores calendars under `/var/lib/radicale/collections`.
 Mount this directory to persist calendar data between container restarts. The
-Radicale configuration now references the fully qualified
+Radicale configuration uses the fully qualified
 `radicale.storage.filesystem` backend so the bundled Python environment always
 finds the storage plugin, even when entry-point discovery is restricted on the
 Pi. During startup the entrypoint now launches Radicale via
-`/opt/radicale/bin/radicale`, waits for the service to open
+`/opt/radicale/bin/radicale`, records all stdout/stderr in
+`${APP_STATE_DIR}/logs/radicale.log`, waits for the service to open
 `${RADICALE_LISTEN_HOST}:${RADICALE_LISTEN_PORT}`, and bails out early if the
-process exits unexpectedly. The health check output appears in the container
-logs so you can immediately spot configuration or permission problems before
-the Node.js server starts. The entrypoint also continues to repair the owner
-and permissions of the Radicale storage and credentials file to match
-`RADICALE_RUN_USER`, preventing "permission denied" errors when switching
-between versions or after restoring backups.
+process exits unexpectedly. If the bundled `runuser` utility is unavailable the
+entrypoint automatically falls back to `su` so Radicale still runs under the
+dedicated `radicale` account. Whenever the readiness probe times out, the last
+log lines are printed to the container logs to make troubleshooting obvious
+before the Node.js server starts. The entrypoint also continues to repair the
+owner and permissions of the Radicale storage, credentials file, and log file
+to match `RADICALE_RUN_USER`, preventing "permission denied" errors when
+switching between versions or after restoring backups.
 
 ## Stopping the container
 
