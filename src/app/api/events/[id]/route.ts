@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { Prisma } from "@prisma/client";
+
 import { authenticateRequest } from "@/lib/auth/api-auth";
 import { getEvent } from "@/lib/calendar-db";
 import { logger } from "@/lib/logger";
@@ -92,9 +94,40 @@ export async function PATCH(
     }
 
     const updates = await request.json();
+
+    let metadata:
+      | Prisma.NullableJsonNullValueInput
+      | Prisma.InputJsonValue
+      | undefined =
+      (existingEvent.metadata as Prisma.InputJsonValue | null) ?? undefined;
+
+    if (Array.isArray(updates.tagIds)) {
+      const tags = await prisma.tag.findMany({
+        where: {
+          id: { in: updates.tagIds },
+          userId,
+        },
+        select: {
+          id: true,
+          name: true,
+          color: true,
+        },
+      });
+
+      if (tags.length === 0) {
+        metadata = Prisma.JsonNull;
+      } else {
+        metadata = ({ tags } satisfies Prisma.JsonObject);
+      }
+    }
+
     const updated = await prisma.calendarEvent.update({
       where: { id },
-      data: updates,
+      data: {
+        ...updates,
+        tagIds: undefined,
+        metadata,
+      },
     });
 
     return NextResponse.json(updated);

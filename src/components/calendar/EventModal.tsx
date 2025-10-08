@@ -27,10 +27,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { formatToLocalISOString, newDate } from "@/lib/date-utils";
 import { cn } from "@/lib/utils";
 
-import { useCalendarStore } from "@/store/calendar";
+import { useCalendarStore, CalendarEventRequest } from "@/store/calendar";
 import { useSettingsStore } from "@/store/settings";
+import { useTaskStore } from "@/store/task";
 
 import { CalendarEvent } from "@/types/calendar";
+import { NewTag, Tag } from "@/types/task";
 
 interface EventModalProps {
   isOpen: boolean;
@@ -131,6 +133,9 @@ export function EventModal({
 }: EventModalProps) {
   const { feeds, addEvent, updateEvent, removeEvent } = useCalendarStore();
   const { calendar } = useSettingsStore();
+  const availableTags = useTaskStore((state) => state.tags);
+  const fetchTags = useTaskStore((state) => state.fetchTags);
+  const createTag = useTaskStore((state) => state.createTag);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const [showRecurrenceDialog, setShowRecurrenceDialog] = useState(false);
   const [editMode, setEditMode] = useState<"single" | "series">();
@@ -160,6 +165,16 @@ export function EventModal({
   const [recurrenceInterval, setRecurrenceInterval] = useState(1);
   const [recurrenceByDay, setRecurrenceByDay] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [newTagName, setNewTagName] = useState("");
+  const [newTagColor, setNewTagColor] = useState("#3b82f6");
+  const [isCreatingTag, setIsCreatingTag] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && availableTags.length === 0) {
+      fetchTags().catch(() => undefined);
+    }
+  }, [isOpen, availableTags.length, fetchTags]);
 
   // Reset form when modal opens
   useEffect(() => {
@@ -193,6 +208,22 @@ export function EventModal({
       setEditMode(undefined);
       setShowRecurrenceDialog(false);
 
+      const eventTags: Tag[] = Array.isArray(event?.metadata?.tags)
+        ? (event?.metadata?.tags as Tag[])
+        : Array.isArray(event?.extendedProps?.tags)
+          ? (event?.extendedProps?.tags as Tag[])
+          : event?.tagIds && event.tagIds.length > 0
+            ? availableTags.filter((tag) => event.tagIds?.includes(tag.id))
+            : [];
+
+      setSelectedTagIds(
+        eventTags
+          .map((tag) => tag.id)
+          .filter((id): id is string => Boolean(id))
+      );
+      setNewTagName("");
+      setNewTagColor("#3b82f6");
+
       // Focus the title input
       setTimeout(() => titleInputRef.current?.focus(), 100);
     }
@@ -203,6 +234,7 @@ export function EventModal({
     defaultEndDate,
     feeds,
     calendar.defaultCalendarId,
+    availableTags,
   ]);
 
   // Show recurrence dialog when editing a recurring event
@@ -214,6 +246,41 @@ export function EventModal({
     }
   }, [isOpen, event?.isRecurring, editMode, showRecurrenceDialog]);
 
+  const toggleTag = (tagId: string) => {
+    setSelectedTagIds((prev) =>
+      prev.includes(tagId)
+        ? prev.filter((id) => id !== tagId)
+        : [...prev, tagId]
+    );
+  };
+
+  const handleCreateTag = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!newTagName.trim()) {
+      return;
+    }
+
+    setIsCreatingTag(true);
+    try {
+      const created = await createTag({
+        name: newTagName.trim(),
+        color: newTagColor,
+      } as NewTag);
+      setSelectedTagIds((prev) =>
+        prev.includes(created.id) ? prev : [...prev, created.id]
+      );
+      setNewTagName("");
+    } catch (error) {
+      console.error("Failed to create tag", error);
+    } finally {
+      setIsCreatingTag(false);
+    }
+  };
+
+  const selectedTags = selectedTagIds
+    .map((id) => availableTags.find((tag) => tag.id === id))
+    .filter((tag): tag is Tag => Boolean(tag));
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -224,7 +291,7 @@ export function EventModal({
         return;
       }
 
-      const eventData: Omit<CalendarEvent, "id"> = {
+      const eventData: CalendarEventRequest = {
         title,
         description,
         location,
@@ -241,6 +308,7 @@ export function EventModal({
             )
           : undefined,
         isMaster: false,
+        tagIds: selectedTagIds,
       };
 
       if (event?.id) {
@@ -497,6 +565,77 @@ export function EventModal({
               />
             </div>
 
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label>Tags</Label>
+                {selectedTags.length > 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    Boost für {selectedTags.map((tag) => tag.name).join(", ")}
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {availableTags.length === 0 ? (
+                  <span className="text-xs text-muted-foreground">
+                    Noch keine Tags vorhanden – lege unten einen neuen an.
+                  </span>
+                ) : (
+                  availableTags.map((tag) => {
+                    const isSelected = selectedTagIds.includes(tag.id);
+                    const accent = tag.color || "#6366f1";
+                    return (
+                      <button
+                        key={tag.id}
+                        type="button"
+                        onClick={() => toggleTag(tag.id)}
+                        className={cn(
+                          "rounded-full border px-3 py-1 text-xs font-semibold transition",
+                          isSelected
+                            ? "text-white shadow-sm"
+                            : "border-border text-muted-foreground hover:border-primary/60"
+                        )}
+                        style={
+                          isSelected
+                            ? { backgroundColor: accent, borderColor: accent }
+                            : tag.color
+                              ? { borderColor: accent, color: accent }
+                              : undefined
+                        }
+                      >
+                        {tag.name}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+              <form
+                onSubmit={handleCreateTag}
+                className="flex flex-wrap items-center gap-2"
+              >
+                <Input
+                  type="text"
+                  placeholder="Neuen Tag hinzufügen"
+                  value={newTagName}
+                  onChange={(e) => setNewTagName(e.target.value)}
+                  className="h-9 w-40"
+                />
+                <Input
+                  type="color"
+                  value={newTagColor}
+                  onChange={(e) => setNewTagColor(e.target.value)}
+                  className="h-9 w-16 cursor-pointer p-1"
+                />
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="secondary"
+                  disabled={!newTagName.trim() || isCreatingTag}
+                >
+                  {isCreatingTag ? "Speichere…" : "Tag speichern"}
+                </Button>
+              </form>
+            </div>
+
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="recurring"
@@ -616,5 +755,9 @@ export function EventModal({
     setRecurrenceFreq("");
     setRecurrenceInterval(1);
     setRecurrenceByDay([]);
+    setSelectedTagIds([]);
+    setNewTagName("");
+    setNewTagColor("#3b82f6");
+    setIsCreatingTag(false);
   }
 }

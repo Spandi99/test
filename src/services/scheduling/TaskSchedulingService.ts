@@ -10,7 +10,7 @@ import {
   TimePreference,
 } from "@/types/task";
 
-import { SchedulingService } from "./SchedulingService";
+import { SchedulingService, CompressionAlert } from "./SchedulingService";
 
 const LOG_SOURCE = "TaskSchedulingService";
 
@@ -91,14 +91,14 @@ function convertDbTaskToTaskWithRelations(
  */
 export async function scheduleAllTasksForUser(
   userId: string
-): Promise<TaskWithRelations[]>;
+): Promise<{ tasks: TaskWithRelations[]; compressionAlerts: CompressionAlert[] }>;
 
 /**
  * Implementation of scheduleAllTasksForUser
  */
 export async function scheduleAllTasksForUser(
   userId: string
-): Promise<TaskWithRelations[]> {
+): Promise<{ tasks: TaskWithRelations[]; compressionAlerts: CompressionAlert[] }> {
   try {
     logger.info("Starting task scheduling for user", { userId }, LOG_SOURCE);
 
@@ -175,16 +175,17 @@ export async function scheduleAllTasksForUser(
     });
 
     // Schedule all tasks
-    const updatedTasks = await schedulingService.scheduleMultipleTasks(
-      [...tasksToSchedule, ...lockedTasks],
-      userId
-    );
+    const { tasks: scheduledTasks, compressionAlerts } =
+      await schedulingService.scheduleMultipleTasks(
+        [...tasksToSchedule, ...lockedTasks],
+        userId
+      );
 
     // Update the lastScheduled timestamp for all tasks
     await prisma.task.updateMany({
       where: {
         id: {
-          in: updatedTasks.map((task) => task.id),
+          in: scheduledTasks.map((task) => task.id),
         },
       },
       data: {
@@ -196,7 +197,7 @@ export async function scheduleAllTasksForUser(
     const dbTasks = (await prisma.task.findMany({
       where: {
         id: {
-          in: updatedTasks.map((task) => task.id),
+          in: scheduledTasks.map((task) => task.id),
         },
         userId,
       },
@@ -211,11 +212,11 @@ export async function scheduleAllTasksForUser(
 
     logger.info(
       "Task scheduling completed successfully",
-      { userId, tasksScheduled: updatedTasks.length },
+      { userId, tasksScheduled: scheduledTasks.length },
       LOG_SOURCE
     );
 
-    return tasksWithRelations;
+    return { tasks: tasksWithRelations, compressionAlerts };
   } catch (error) {
     logger.error(
       "Error scheduling tasks",

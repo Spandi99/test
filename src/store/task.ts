@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { toast } from "sonner";
 
 import { isSaasEnabled } from "@/lib/config";
 
@@ -373,7 +374,18 @@ export const useTaskStore = create<TaskState>()(
             headers: { "Content-Type": "application/json" },
           });
           if (!response.ok) throw new Error("Failed to schedule tasks");
-          const updatedTasks = await response.json();
+          const payload = await response.json();
+          const updatedTasks = Array.isArray(payload)
+            ? (payload as Task[])
+            : ((payload.tasks as Task[]) || []);
+          const compressionAlerts: Array<{
+            taskId: string;
+            taskTitle: string;
+            originalDuration: number;
+            scheduledDuration: number;
+          }> = Array.isArray(payload)
+            ? []
+            : payload.compressionAlerts || [];
 
           // Get current tasks from store
           const currentTasks = get().tasks;
@@ -389,6 +401,15 @@ export const useTaskStore = create<TaskState>()(
           ) as Task[];
 
           set({ tasks: mergedTasks });
+
+          if (compressionAlerts.length > 0) {
+            compressionAlerts.forEach((alert) => {
+              toast(`Zeit knapp: ${alert.taskTitle}`, {
+                description: `Geplant mit ${Math.round(alert.scheduledDuration)} Min (statt ${Math.round(alert.originalDuration)} Min).`,
+                duration: 5000,
+              });
+            });
+          }
         } catch (error) {
           set({ error: error as Error });
           throw error;

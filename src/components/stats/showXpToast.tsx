@@ -43,6 +43,11 @@ function XpToast({ summary }: { summary: GainSummary }) {
           </span>
         )}
       </div>
+      {summary.hypeText && (
+        <p className="mt-2 text-xs font-semibold text-primary/80">
+          {summary.hypeText}
+        </p>
+      )}
       <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-muted">
         <div
           className="h-full rounded-full bg-gradient-to-r from-primary via-sky-500 to-violet-500 transition-all duration-500"

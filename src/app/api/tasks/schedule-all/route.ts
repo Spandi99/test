@@ -18,9 +18,13 @@ export async function POST(request: NextRequest) {
 
     // Use the common function to schedule all tasks
     // If settings are provided, use them, otherwise use the overloaded function
-    const tasksWithRelations = await scheduleAllTasksForUser(userId);
+    const { tasks: tasksWithRelations, compressionAlerts } =
+      await scheduleAllTasksForUser(userId);
 
-    return NextResponse.json(tasksWithRelations);
+    return NextResponse.json({
+      tasks: tasksWithRelations,
+      compressionAlerts,
+    });
   } catch (error) {
     logger.error(
       "Error scheduling tasks:",

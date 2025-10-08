@@ -13,6 +13,12 @@ export interface CalendarFeed {
   userId?: string;
 }
 
+export interface CalendarEventTag {
+  id?: string;
+  name: string;
+  color?: string | null;
+}
+
 export interface ExtendedEventProps {
   isTask?: boolean;
   taskId?: string;
@@ -20,7 +26,14 @@ export interface ExtendedEventProps {
   priority?: string;
   energyLevel?: string;
   preferredTime?: string;
-  tags?: Array<{ id: string; name: string; color?: string }>;
+  tags?: CalendarEventTag[];
+  isPreparationReminder?: boolean;
+  sourceEventId?: string;
+}
+
+export interface CalendarEventMetadata {
+  tags?: CalendarEventTag[];
+  [key: string]: unknown;
 }
 
 export interface CalendarEvent {
@@ -58,6 +71,8 @@ export interface CalendarEvent {
   recurringEventId?: string;
   // Extended properties for custom data
   extendedProps?: ExtendedEventProps;
+  metadata?: CalendarEventMetadata | null;
+  tagIds?: string[];
 }
 
 export enum EventStatus {

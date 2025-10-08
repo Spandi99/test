@@ -14,6 +14,13 @@ import { TimeSlotManager, TimeSlotManagerImpl } from "./TimeSlotManager";
 const DEFAULT_TASK_DURATION = 30; // Default duration in minutes
 const LOG_SOURCE = "SchedulingService";
 
+export interface CompressionAlert {
+  taskId: string;
+  taskTitle: string;
+  originalDuration: number;
+  scheduledDuration: number;
+}
+
 interface PerformanceMetrics {
   operation: string;
   startTime: number;
@@ -26,6 +33,7 @@ export class SchedulingService {
   private calendarService: CalendarServiceImpl;
   private settings: AutoScheduleSettings | null;
   private metrics: PerformanceMetrics[] = [];
+  private compressionAlerts: CompressionAlert[] = [];
 
   constructor(settings?: AutoScheduleSettings) {
     this.calendarService = new CalendarServiceImpl();
@@ -110,10 +118,15 @@ export class SchedulingService {
     return manager;
   }
 
-  async scheduleMultipleTasks(tasks: Task[], userId: string): Promise<Task[]> {
+  async scheduleMultipleTasks(
+    tasks: Task[],
+    userId: string
+  ): Promise<{ tasks: Task[]; compressionAlerts: CompressionAlert[] }> {
     const overallStart = this.startMetric("scheduleMultipleTasks", {
       totalTasks: tasks.length,
     });
+
+    this.compressionAlerts = [];
 
     // Clear existing schedules for non-locked tasks
     const tasksToSchedule = tasks.filter((t) => !t.scheduleLocked);
@@ -227,7 +240,7 @@ export class SchedulingService {
     this.endMetric("scheduleMultipleTasks", overallStart);
     this.logMetrics();
 
-    return allTasks;
+    return { tasks: allTasks, compressionAlerts: this.compressionAlerts };
   }
 
   private async scheduleTask(
@@ -247,6 +260,15 @@ export class SchedulingService {
       // { days: 30, label: "1 month" },
     ];
 
+    const baseDuration = task.duration || DEFAULT_TASK_DURATION;
+    const attemptDurations = Array.from(
+      new Set([
+        baseDuration,
+        Math.max(20, Math.round(baseDuration * 0.75)),
+        Math.max(15, Math.round(baseDuration * 0.5)),
+      ])
+    );
+
     for (const window of windows) {
       const windowStart = this.startMetric("tryWindow", {
         window: window.label,
@@ -254,52 +276,63 @@ export class SchedulingService {
       });
 
       const endDate = addDays(now, window.days);
-      const availableSlots = await timeSlotManager.findAvailableSlots(
-        task,
-        now,
-        endDate,
-        userId
-      );
 
-      if (availableSlots.length > 0) {
-        const bestSlot = availableSlots[0]; // Already sorted by score
-
-        const updateStart = this.startMetric("updateTask", {
-          taskId: task.id,
-          slotStart: bestSlot.start,
-          slotEnd: bestSlot.end,
-        });
-
-        // Update the task with the selected slot
-        const updatedTask = await prisma.task.update({
-          where: { id: task.id },
-          data: {
-            scheduledStart: bestSlot.start,
-            scheduledEnd: bestSlot.end,
-            isAutoScheduled: true,
-            duration: task.duration || DEFAULT_TASK_DURATION,
-            scheduleScore: bestSlot.score,
-            userId,
-          },
-        });
-
-        // Add this newly scheduled task to the list of conflicts
-        // so it won't be available for other tasks
-        await timeSlotManager.addScheduledTaskConflict(updatedTask);
-
-        this.endMetric("updateTask", updateStart);
-        this.endMetric("tryWindow", windowStart);
-        this.endMetric("scheduleTask", taskStart);
-        return updatedTask;
-      } else {
-        logger.debug(
-          `No available slots found in ${window.label} window`,
-          {
-            windowLabel: window.label,
-          },
-          LOG_SOURCE
+      for (const attemptDuration of attemptDurations) {
+        const adjustedTask = { ...task, duration: attemptDuration };
+        const availableSlots = await timeSlotManager.findAvailableSlots(
+          adjustedTask,
+          now,
+          endDate,
+          userId
         );
+
+        if (availableSlots.length > 0) {
+          const bestSlot = availableSlots[0];
+
+          const updateStart = this.startMetric("updateTask", {
+            taskId: task.id,
+            slotStart: bestSlot.start,
+            slotEnd: bestSlot.end,
+          });
+
+          const updatedTask = await prisma.task.update({
+            where: { id: task.id },
+            data: {
+              scheduledStart: bestSlot.start,
+              scheduledEnd: bestSlot.end,
+              isAutoScheduled: true,
+              duration: attemptDuration,
+              scheduleScore: bestSlot.score,
+              userId,
+            },
+          });
+
+          await timeSlotManager.addScheduledTaskConflict(updatedTask);
+
+          this.endMetric("updateTask", updateStart);
+          this.endMetric("tryWindow", windowStart);
+          this.endMetric("scheduleTask", taskStart);
+
+          if (attemptDuration !== baseDuration) {
+            this.compressionAlerts.push({
+              taskId: task.id,
+              taskTitle: task.title,
+              originalDuration: baseDuration,
+              scheduledDuration: attemptDuration,
+            });
+          }
+
+          return updatedTask;
+        }
       }
+
+      logger.debug(
+        `No available slots found in ${window.label} window`,
+        {
+          windowLabel: window.label,
+        },
+        LOG_SOURCE
+      );
 
       this.endMetric("tryWindow", windowStart);
     }

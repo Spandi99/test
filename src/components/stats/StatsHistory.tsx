@@ -11,6 +11,7 @@ const SOURCE_LABEL: Record<StatsEvent["source"], string> = {
   task: "Task abgeschlossen",
   daily: "Tagesbonus",
   manual: "Manuelle Belohnung",
+  event: "Termin abgeschlossen",
 };
 
 interface StatsHistoryProps {
@@ -42,6 +43,9 @@ export function StatsHistory({ events }: StatsHistoryProps) {
                   {SOURCE_LABEL[event.source]}
                 </span>
                 <span className="text-sm text-muted-foreground">{event.label}</span>
+                {event.hypeText && (
+                  <span className="text-xs text-primary/80">{event.hypeText}</span>
+                )}
                 <span className="text-xs text-muted-foreground">
                   {format(date, "EEEE, dd.MM.yyyy HH:mm", { locale: de })}
                 </span>

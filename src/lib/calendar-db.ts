@@ -1,13 +1,62 @@
 import { NextResponse } from "next/server";
 
+import { Prisma } from "@prisma/client";
+
 import { prisma } from "@/lib/prisma";
 
 import {
   AttendeeStatus,
+  CalendarEventMetadata,
   CalendarEventWithFeed,
   EventStatus,
   ValidatedEvent,
 } from "@/types/calendar";
+
+function normalizeMetadata(
+  value: Prisma.JsonValue | null
+): CalendarEventMetadata | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const json = value as Prisma.JsonObject;
+  const metadata: CalendarEventMetadata = {};
+
+  for (const [key, entry] of Object.entries(json)) {
+    if (key === "tags" && Array.isArray(entry)) {
+      const tagsResult: CalendarEventMetadata["tags"] = [];
+      for (const tag of entry) {
+        if (!tag || typeof tag !== "object" || Array.isArray(tag)) {
+          continue;
+        }
+        const tagObj = tag as Prisma.JsonObject;
+        const name = tagObj.name;
+        if (typeof name !== "string") {
+          continue;
+        }
+        const id = tagObj.id;
+        const color = tagObj.color;
+        tagsResult.push({
+          id: typeof id === "string" ? id : undefined,
+          name,
+          color:
+            typeof color === "string"
+              ? color
+              : color === null
+                ? null
+                : undefined,
+        });
+      }
+      if (tagsResult.length > 0) {
+        metadata.tags = tagsResult;
+      }
+    } else {
+      metadata[key] = entry as unknown;
+    }
+  }
+
+  return Object.keys(metadata).length > 0 ? metadata : null;
+}
 
 export async function getEvent(
   eventId: string
@@ -36,6 +85,7 @@ export async function getEvent(
       | undefined,
     masterEventId: event.masterEventId || undefined,
     recurringEventId: event.recurringEventId || undefined,
+    metadata: normalizeMetadata(event.metadata as Prisma.JsonValue | null),
     feed: {
       ...event.feed,
       type: event.feed.type as "GOOGLE" | "OUTLOOK" | "CALDAV" | "LOCAL",

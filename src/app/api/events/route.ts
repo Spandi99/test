@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { Prisma } from "@prisma/client";
+
 import { authenticateRequest } from "@/lib/auth/api-auth";
 import { newDate } from "@/lib/date-utils";
 import { logger } from "@/lib/logger";
@@ -73,6 +75,7 @@ export async function POST(request: NextRequest) {
       isRecurring,
       recurrenceRule,
       allDay,
+      tagIds,
     } = await request.json();
 
     if (!feedId || !title || !start || !end) {
@@ -103,6 +106,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    let metadata:
+      | Prisma.NullableJsonNullValueInput
+      | Prisma.InputJsonValue
+      | undefined;
+
+    if (Array.isArray(tagIds)) {
+      const tags = await prisma.tag.findMany({
+        where: {
+          id: { in: tagIds },
+          userId,
+        },
+        select: {
+          id: true,
+          name: true,
+          color: true,
+        },
+      });
+
+      metadata =
+        tags.length > 0
+          ? ({ tags } satisfies Prisma.JsonObject)
+          : Prisma.JsonNull;
+    }
+
     // Create event in database
     const event = await prisma.calendarEvent.create({
       data: {
@@ -115,6 +142,7 @@ export async function POST(request: NextRequest) {
         isRecurring: isRecurring || false,
         recurrenceRule,
         allDay: allDay || false,
+        metadata,
       },
     });
 
@@ -154,6 +182,7 @@ export async function PATCH(request: NextRequest) {
       isRecurring,
       recurrenceRule,
       allDay,
+      tagIds,
     } = await request.json();
 
     if (!id) {
@@ -178,6 +207,32 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    let metadata:
+      | Prisma.NullableJsonNullValueInput
+      | Prisma.InputJsonValue
+      | undefined =
+      (existingEvent.metadata as Prisma.InputJsonValue | null) ?? undefined;
+
+    if (Array.isArray(tagIds)) {
+      const tags = await prisma.tag.findMany({
+        where: {
+          id: { in: tagIds },
+          userId,
+        },
+        select: {
+          id: true,
+          name: true,
+          color: true,
+        },
+      });
+
+      if (tags.length === 0) {
+        metadata = Prisma.JsonNull;
+      } else {
+        metadata = ({ tags } satisfies Prisma.JsonObject);
+      }
+    }
+
     const event = await prisma.calendarEvent.update({
       where: { id },
       data: {
@@ -189,6 +244,7 @@ export async function PATCH(request: NextRequest) {
         isRecurring,
         recurrenceRule,
         allDay,
+        metadata,
       },
     });
 

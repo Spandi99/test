@@ -1,4 +1,10 @@
-import { DailyActivityDefinition, StatKey, WeekdayKey } from "@/types/stats";
+import {
+  AvatarOption,
+  DailyActivityDefinition,
+  StatKey,
+  TagBonusDefinition,
+  WeekdayKey,
+} from "@/types/stats";
 
 export interface StatDefinition {
   key: StatKey;
@@ -56,6 +62,65 @@ export const STAT_DEFINITIONS: Record<StatKey, StatDefinition> = {
     accentColor: "bg-teal-500/15 text-teal-600 dark:text-teal-300",
   },
 };
+
+export const AVATAR_PRESETS: AvatarOption[] = [
+  {
+    id: "trailblazer",
+    label: "Der Trailblazer",
+    description: "Ausdauernder Macher mit energiegeladenem Look.",
+    layers: {
+      id: "trailblazer",
+      label: "Trailblazer",
+      background: "from-emerald-400 via-emerald-500 to-emerald-600",
+      skinTone: "#f5c7a9",
+      hairColor: "#2b1b13",
+      outfitColor: "#0ea5e9",
+      accentColor: "#22c55e",
+    },
+  },
+  {
+    id: "focus-prodigy",
+    label: "Der Fokus-Pro",
+    description: "Laserfokus mit kühlem Blau und smartem Stil.",
+    layers: {
+      id: "focus-prodigy",
+      label: "Fokus-Pro",
+      background: "from-sky-400 via-indigo-500 to-indigo-600",
+      skinTone: "#f1a790",
+      hairColor: "#1f2937",
+      outfitColor: "#2563eb",
+      accentColor: "#38bdf8",
+    },
+  },
+  {
+    id: "creative-spark",
+    label: "Der Ideenfunke",
+    description: "Farbenfrohe Kreativität mit warmem Glow.",
+    layers: {
+      id: "creative-spark",
+      label: "Ideenfunke",
+      background: "from-amber-300 via-orange-400 to-rose-400",
+      skinTone: "#f7d3b4",
+      hairColor: "#b45309",
+      outfitColor: "#f97316",
+      accentColor: "#fb7185",
+    },
+  },
+  {
+    id: "night-owl",
+    label: "Der Night-Owl",
+    description: "Ruhiger Fokus mit nächtlichem Vibe.",
+    layers: {
+      id: "night-owl",
+      label: "Night Owl",
+      background: "from-slate-800 via-slate-900 to-black",
+      skinTone: "#c58c85",
+      hairColor: "#0f172a",
+      outfitColor: "#4c1d95",
+      accentColor: "#8b5cf6",
+    },
+  },
+];
 
 export const DAILY_ACTIVITIES: Record<WeekdayKey, DailyActivityDefinition[]> = {
   monday: [
@@ -263,6 +328,54 @@ export const DAILY_ACTIVITIES: Record<WeekdayKey, DailyActivityDefinition[]> = {
   ],
 };
 
+export const TAG_BONUS_DEFINITIONS: TagBonusDefinition[] = [
+  {
+    id: "uni-focus",
+    label: "Campus Fokus",
+    patterns: [/\buni\b/i, /studium/i, /vorlesung/i, /seminar/i],
+    statKey: "focus",
+    statAmount: 2,
+    xpBonus: 30,
+    hypeText: "Campus Combo! Dein Fokus-Level schießt nach oben.",
+  },
+  {
+    id: "praktikum-pro",
+    label: "Praktikums-Pro",
+    patterns: [/praktikum/i, /praktikant/i, /internship/i, /werkstudent/i],
+    statKey: "social",
+    statAmount: 2,
+    xpBonus: 25,
+    hypeText: "Netzwerk-Boost! Du bist ready fürs Team.",
+  },
+  {
+    id: "endurance-rush",
+    label: "Ausdauer-Boost",
+    patterns: [/jogg/i, /lauf/i, /workout/i, /training/i, /cardio/i, /yoga/i],
+    statKey: "endurance",
+    statAmount: 2,
+    xpBonus: 20,
+    hypeText: "Endorphin-Kick! Deine Ausdauer steigt.",
+  },
+  {
+    id: "zen-reset",
+    label: "Zen Reset",
+    patterns: [/medit/i, /achtsam/i, /wellness/i, /entspann/i],
+    statKey: "wellbeing",
+    statAmount: 2,
+    xpBonus: 18,
+    hypeText: "Selfcare FTW – Wohlbefinden on point.",
+  },
+  {
+    id: "creative-flow",
+    label: "Creative Flow",
+    patterns: [/design/i, /schreib/i, /write/i, /malen/i, /kunst/i],
+    statKey: "creativity",
+    statAmount: 2,
+    xpBonus: 22,
+    hypeText: "Kreativmodus aktiviert – Ideen sprudeln!",
+  },
+];
+
 export const TASK_KEYWORD_MAP: Array<{ patterns: RegExp[]; statKey: StatKey }> = [
   {
     statKey: "endurance",
@@ -334,6 +447,10 @@ export const TASK_KEYWORD_MAP: Array<{ patterns: RegExp[]; statKey: StatKey }> =
 export const BASE_TASK_XP = 35;
 export const XP_PER_ESTIMATED_MINUTE = 0.2;
 export const MAX_TASK_XP_BONUS = 40;
+
+export const BASE_EVENT_XP = 25;
+export const EVENT_XP_PER_HOUR = 18;
+export const MAX_EVENT_XP_BONUS = 45;
 
 export function getXpForLevel(level: number): number {
   return 120 + (level - 1) * 45;

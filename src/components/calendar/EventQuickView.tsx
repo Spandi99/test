@@ -1,3 +1,7 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
 import { HiCheck, HiPencil, HiTrash } from "react-icons/hi";
 import {
   IoCalendarOutline,
@@ -20,8 +24,11 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 
+import { showXpToast } from "@/components/stats/showXpToast";
+
 import { AttendeeStatus, CalendarEvent } from "@/types/calendar";
 import { Priority, Task, TaskStatus } from "@/types/task";
+import { useStatsStore } from "@/store/stats";
 
 interface Attendee {
   name?: string;
@@ -63,6 +70,9 @@ export function EventQuickView({
   onStatusChange,
   referenceElement,
 }: EventQuickViewProps) {
+  const awardEventCompletion = useStatsStore(
+    (state) => state.awardEventCompletion
+  );
   const getStatusColor = (status: string | undefined) => {
     switch (status?.toUpperCase()) {
       case "ACCEPTED":
@@ -85,6 +95,14 @@ export function EventQuickView({
     : null;
 
   const isOverdue = taskItem && isTaskOverdue(taskItem);
+  const isPreparationReminder = Boolean(
+    !isTask && eventItem?.extendedProps?.isPreparationReminder
+  );
+  const [hasClaimedReward, setHasClaimedReward] = useState(false);
+
+  useEffect(() => {
+    setHasClaimedReward(false);
+  }, [item]);
 
   return (
     <Popover open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -159,6 +177,30 @@ export function EventQuickView({
                   <HiCheck className="h-4 w-4" />
                 </button>
               )}
+              {!isTask && eventItem && !isPreparationReminder && (
+                <button
+                  onClick={() => {
+                    if (hasClaimedReward) return;
+                    const summary = awardEventCompletion(eventItem);
+                    showXpToast(summary);
+                    setHasClaimedReward(true);
+                  }}
+                  className={cn(
+                    "rounded-md p-1.5",
+                    hasClaimedReward
+                      ? "cursor-not-allowed bg-muted text-muted-foreground"
+                      : "text-muted-foreground hover:bg-muted hover:text-green-600"
+                  )}
+                  title={
+                    hasClaimedReward
+                      ? "Belohnung bereits eingesammelt"
+                      : "Belohnung einsammeln"
+                  }
+                  disabled={hasClaimedReward}
+                >
+                  <HiCheck className="h-4 w-4" />
+                </button>
+              )}
               <button
                 onClick={onEdit}
                 className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-primary"
@@ -196,6 +238,24 @@ export function EventQuickView({
                   </span>
                 </div>
               )}
+              {eventItem.extendedProps?.tags &&
+                eventItem.extendedProps.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {eventItem.extendedProps.tags.map((tag) => (
+                      <span
+                        key={tag.id ?? tag.name}
+                        className="rounded-full border border-border/40 bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
+                        style={
+                          tag.color
+                            ? { borderColor: tag.color, color: tag.color }
+                            : undefined
+                        }
+                      >
+                        {tag.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
               {eventItem.attendees && eventItem.attendees.length > 0 && (
                 <div className="flex items-start gap-2">
                   <IoPeopleOutline className="mt-0.5 h-4 w-4 flex-shrink-0" />

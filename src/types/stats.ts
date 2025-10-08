@@ -1,5 +1,32 @@
 export type StatKey = "focus" | "endurance" | "creativity" | "social" | "wellbeing";
 
+export interface AvatarLayer {
+  id: string;
+  label: string;
+  background: string;
+  skinTone: string;
+  hairColor: string;
+  outfitColor: string;
+  accentColor: string;
+}
+
+export interface AvatarOption {
+  id: string;
+  label: string;
+  description: string;
+  layers: AvatarLayer;
+}
+
+export interface TagBonusDefinition {
+  id: string;
+  label: string;
+  patterns: RegExp[];
+  statKey: StatKey;
+  statAmount: number;
+  xpBonus: number;
+  hypeText: string;
+}
+
 export interface StatSnapshot {
   key: StatKey;
   value: number;
@@ -11,8 +38,10 @@ export interface StatChange {
   newValue: number;
 }
 
+export type GainSource = "task" | "daily" | "manual" | "event";
+
 export interface GainSummary {
-  source: "task" | "daily" | "manual";
+  source: GainSource;
   label: string;
   xpAwarded: number;
   previousLevel: number;
@@ -23,6 +52,7 @@ export interface GainSummary {
   leveledUp: boolean;
   statChanges: StatChange[];
   timestamp: string;
+  hypeText?: string;
 }
 
 export interface StatsEvent extends GainSummary {

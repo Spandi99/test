@@ -3,11 +3,13 @@
 import { useMemo } from "react";
 
 import {
+  AVATAR_PRESETS,
   DAILY_ACTIVITIES,
   STAT_DEFINITIONS,
   getWeekdayKey,
 } from "@/lib/stats-config";
 import { newDate } from "@/lib/date-utils";
+import { cn } from "@/lib/utils";
 
 import { StatsAvatar } from "@/components/stats/StatsAvatar";
 import { StatsDailyActivities } from "@/components/stats/StatsDailyActivities";
@@ -35,6 +37,9 @@ export default function StatsPage() {
     completedDailyActivities,
     currentStreak,
     longestStreak,
+    avatarId,
+    unlockedAvatarIds,
+    setAvatar,
     completeDailyActivity,
   } = useStatsStore((state) => state);
 
@@ -60,12 +65,22 @@ export default function StatsPage() {
   );
 
   const dominantStat = sortedStats[0]?.[0] ?? "focus";
+  const activeAvatar = useMemo(() => {
+    return (
+      AVATAR_PRESETS.find((preset) => preset.id === avatarId) ??
+      AVATAR_PRESETS[0]
+    );
+  }, [avatarId]);
 
   const handleCompleteActivity = (activityId: string) => {
     const summary = completeDailyActivity(activityId);
     if (summary) {
       showXpToast(summary);
     }
+  };
+
+  const handleSelectAvatar = (presetId: string) => {
+    setAvatar(presetId);
   };
 
   return (
@@ -84,6 +99,7 @@ export default function StatsPage() {
             <CardContent className="grid gap-6 lg:grid-cols-[220px_1fr] lg:items-center">
               <div className="flex justify-center lg:justify-start">
                 <StatsAvatar
+                  avatar={activeAvatar}
                   dominantStat={dominantStat}
                   level={level}
                   streak={currentStreak}
@@ -105,6 +121,53 @@ export default function StatsPage() {
                     <p>
                       {currentStreak} Tage in Folge · Bester Lauf: {longestStreak} Tage
                     </p>
+                  </div>
+                </div>
+                <div className="space-y-2 rounded-lg border border-border/60 bg-background/70 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Avatar auswählen
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {AVATAR_PRESETS.map((preset) => {
+                      const isUnlocked = unlockedAvatarIds.includes(preset.id);
+                      const isActive = preset.id === avatarId;
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => handleSelectAvatar(preset.id)}
+                          disabled={!isUnlocked}
+                          className={cn(
+                            "flex items-center gap-3 rounded-lg border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-primary",
+                            isActive
+                              ? "border-primary/60 bg-primary/10"
+                              : "border-border/60 bg-background hover:border-primary/40",
+                            !isUnlocked && "cursor-not-allowed opacity-50"
+                          )}
+                        >
+                          <div
+                            className={cn(
+                              "h-10 w-10 rounded-full border-2 border-white/60 shadow-inner",
+                              "bg-gradient-to-br",
+                              preset.layers.background
+                            )}
+                          />
+                          <div className="flex flex-col">
+                            <span className="text-sm font-semibold text-foreground">
+                              {preset.label}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {preset.description}
+                            </span>
+                          </div>
+                          {!isUnlocked && (
+                            <span className="ml-auto text-xs text-muted-foreground" aria-hidden>
+                              🔒
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </div>

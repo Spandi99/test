@@ -3,7 +3,12 @@ import { v4 as uuidv4 } from "uuid";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-import { newDate, normalizeAllDayDate } from "@/lib/date-utils";
+import {
+  addMinutes,
+  newDate,
+  normalizeAllDayDate,
+  subDays,
+} from "@/lib/date-utils";
 import { DEFAULT_TASK_COLOR } from "@/lib/task-utils";
 
 import { useTaskStore } from "@/store/task";
@@ -14,8 +19,102 @@ import {
   CalendarState,
   CalendarView,
   CalendarViewState,
+  CalendarEventTag,
 } from "@/types/calendar";
 import { TaskStatus } from "@/types/task";
+
+const PRACTICUM_PATTERNS = [
+  /praktikum/i,
+  /praktikant/i,
+  /internship/i,
+  /werkstudent/i,
+];
+
+function normalizeEventTags(event: CalendarEvent): CalendarEvent {
+  const rawTags = Array.isArray(event.metadata?.tags)
+    ? (event.metadata?.tags as CalendarEventTag[])
+    : [];
+  const tags: CalendarEventTag[] = rawTags.map((tag) => ({
+    id: tag.id,
+    name: tag.name,
+    color: tag.color ?? undefined,
+  }));
+
+  return {
+    ...event,
+    tagIds: tags.map((tag) => tag.id).filter(Boolean) as string[],
+    extendedProps: {
+      ...event.extendedProps,
+      tags,
+    },
+  };
+}
+
+function shouldCreatePracticumReminder(event: CalendarEvent): boolean {
+  const haystack = `${event.title ?? ""} ${event.description ?? ""}`;
+  if (PRACTICUM_PATTERNS.some((pattern) => pattern.test(haystack))) {
+    return true;
+  }
+
+  const tagNames = (event.metadata?.tags ?? []).map((tag) => tag.name ?? "");
+  return tagNames.some((name) =>
+    PRACTICUM_PATTERNS.some((pattern) => pattern.test(name))
+  );
+}
+
+function createPracticumReminder(event: CalendarEvent): CalendarEvent | null {
+  if (!shouldCreatePracticumReminder(event)) {
+    return null;
+  }
+
+  const eventStart = newDate(event.start);
+  const now = newDate();
+
+  if (eventStart <= now) {
+    return null;
+  }
+
+  const reminderStart = subDays(eventStart, 1);
+  reminderStart.setHours(18, 0, 0, 0);
+
+  if (reminderStart <= now) {
+    return null;
+  }
+
+  const reminderEnd = addMinutes(reminderStart, 30);
+  const baseTags = event.extendedProps?.tags ?? [];
+
+  return {
+    ...event,
+    id: `prep-${event.id}`,
+    title: `Vorbereitung: ${event.title}`,
+    description:
+      "Alles vorbereiten fürs Praktikum: Unterlagen packen, Outfit checken und Mentally ready werden!",
+    start: reminderStart,
+    end: reminderEnd,
+    allDay: false,
+    isRecurring: false,
+    isMaster: false,
+    extendedProps: {
+      ...event.extendedProps,
+      tags: baseTags,
+      isPreparationReminder: true,
+      sourceEventId: event.id,
+    },
+  };
+}
+
+function prepareEventsForStore(events: CalendarEvent[]): CalendarEvent[] {
+  const normalized = events.map((event) => normalizeEventTags(event));
+  const extras = normalized
+    .map((event) => createPracticumReminder(event))
+    .filter((event): event is CalendarEvent => Boolean(event));
+
+  const seen = new Set(normalized.map((event) => event.id));
+  const uniqueExtras = extras.filter((event) => !seen.has(event.id));
+
+  return [...normalized, ...uniqueExtras];
+}
 
 // Separate store for view preferences that will be persisted in localStorage
 interface ViewStore extends CalendarViewState {
@@ -23,6 +122,10 @@ interface ViewStore extends CalendarViewState {
   setDate: (date: Date) => void;
   setSelectedEventId: (id?: string) => void;
 }
+
+export type CalendarEventRequest = Omit<CalendarEvent, "id"> & {
+  tagIds?: string[];
+};
 
 export const useViewStore = create<ViewStore>()(
   persist(
@@ -96,7 +199,7 @@ interface CalendarStore extends CalendarState {
   updateFeed: (id: string, updates: Partial<CalendarFeed>) => Promise<void>;
 
   // Event management
-  addEvent: (event: Omit<CalendarEvent, "id">) => Promise<void>;
+  addEvent: (event: CalendarEventRequest) => Promise<void>;
   updateEvent: (
     id: string,
     updates: Partial<CalendarEvent>,
@@ -408,7 +511,7 @@ export const useCalendarStore = create<CalendarStore>()((set, get) => ({
   },
 
   // Event management
-  addEvent: async (event: Omit<CalendarEvent, "id">) => {
+  addEvent: async (event: CalendarEventRequest) => {
     const newEvent = { ...event, id: uuidv4() };
 
     try {
@@ -720,7 +823,8 @@ export const useCalendarStore = create<CalendarStore>()((set, get) => ({
       if (!eventsResponse.ok) {
         throw new Error("Failed to load events from database");
       }
-      const events = await eventsResponse.json();
+      const rawEvents = await eventsResponse.json();
+      const events = prepareEventsForStore(rawEvents);
       // console.log("Loaded events:", events);
 
       // console.log("Setting state with loaded data:", {
@@ -762,7 +866,8 @@ export const useCalendarStore = create<CalendarStore>()((set, get) => ({
       set({ isLoading: true, error: undefined });
       const response = await fetch("/api/events");
       if (!response.ok) throw new Error("Failed to fetch calendar events");
-      const events = await response.json();
+      const rawEvents = await response.json();
+      const events = prepareEventsForStore(rawEvents);
       set({ events });
     } catch (error) {
       set({ error: error instanceof Error ? error.message : "Unknown error" });

@@ -2,9 +2,14 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import {
+  AVATAR_PRESETS,
+  BASE_EVENT_XP,
   BASE_TASK_XP,
   DAILY_ACTIVITIES,
+  EVENT_XP_PER_HOUR,
+  MAX_EVENT_XP_BONUS,
   MAX_TASK_XP_BONUS,
+  TAG_BONUS_DEFINITIONS,
   TASK_KEYWORD_MAP,
   XP_PER_ESTIMATED_MINUTE,
   getWeekdayKey,
@@ -19,7 +24,9 @@ import {
   StatChange,
   StatKey,
   StatsEvent,
+  TagBonusDefinition,
 } from "@/types/stats";
+import { CalendarEvent } from "@/types/calendar";
 
 interface StatsState {
   level: number;
@@ -32,8 +39,11 @@ interface StatsState {
   lastProgressDate?: string;
   currentStreak: number;
   longestStreak: number;
+  avatarId: string;
+  unlockedAvatarIds: string[];
 
   awardTaskCompletion: (task: Task) => GainSummary;
+  awardEventCompletion: (event: CalendarEvent) => GainSummary;
   completeDailyActivity: (activityId: string) => GainSummary | null;
   awardManualXp: (
     amount: number,
@@ -43,6 +53,8 @@ interface StatsState {
   ) => GainSummary;
   adjustStat: (key: StatKey, amount: number) => StatChange;
   resetDailyCompletion: (date?: Date) => void;
+  setAvatar: (avatarId: string) => void;
+  unlockAvatar: (avatarId: string) => void;
 }
 
 const INITIAL_STATS: Record<StatKey, number> = {
@@ -52,6 +64,11 @@ const INITIAL_STATS: Record<StatKey, number> = {
   social: 8,
   wellbeing: 9,
 };
+
+const DEFAULT_AVATAR_ID = AVATAR_PRESETS[0]?.id ?? "trailblazer";
+const INITIAL_UNLOCKED_AVATARS = AVATAR_PRESETS.slice(0, 2).map(
+  (preset) => preset.id
+);
 
 function generateId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -87,17 +104,52 @@ function calculateTaskXp(task: Task): number {
   return BASE_TASK_XP + durationBonus + priorityBonus + statusBonus;
 }
 
+function inferStatFromContent(content: string): StatKey | null {
+  for (const entry of TASK_KEYWORD_MAP) {
+    if (entry.patterns.some((pattern) => pattern.test(content))) {
+      return entry.statKey;
+    }
+  }
+  return null;
+}
+
+function getMatchingTagDefinitions<T extends { name?: string }>(
+  tags: T[] | undefined
+): TagBonusDefinition[] {
+  if (!tags || tags.length === 0) {
+    return [];
+  }
+
+  const matches = new Map<string, TagBonusDefinition>();
+
+  for (const tag of tags) {
+    const normalized = (tag.name ?? "").toLowerCase();
+    if (!normalized) continue;
+    for (const definition of TAG_BONUS_DEFINITIONS) {
+      if (definition.patterns.some((pattern) => pattern.test(normalized))) {
+        matches.set(definition.id, definition);
+      }
+    }
+  }
+
+  return Array.from(matches.values());
+}
+
 function inferStatFromTask(task: Task): StatKey {
+  const tagMatch = getMatchingTagDefinitions(task.tags)[0];
+  if (tagMatch) {
+    return tagMatch.statKey;
+  }
+
   const haystack = [
     task.title,
     task.description ?? "",
     ...task.tags.map((tag) => tag.name ?? ""),
   ].join(" ");
 
-  for (const entry of TASK_KEYWORD_MAP) {
-    if (entry.patterns.some((pattern) => pattern.test(haystack))) {
-      return entry.statKey;
-    }
+  const keywordStat = inferStatFromContent(haystack);
+  if (keywordStat) {
+    return keywordStat;
   }
 
   switch (task.energyLevel) {
@@ -117,6 +169,48 @@ function getStatGainForTask(task: Task): number {
   return 1;
 }
 
+function applyTagBonuses<T extends { name?: string }>(
+  tags: T[] | undefined,
+  adjust: (key: StatKey, amount: number) => StatChange
+) : { statChanges: StatChange[]; xpBonus: number; hypeText?: string } {
+  const matches = getMatchingTagDefinitions(tags);
+  if (matches.length === 0) {
+    return { statChanges: [], xpBonus: 0, hypeText: undefined };
+  }
+
+  const statChanges = matches.map((match) => adjust(match.statKey, match.statAmount));
+  const xpBonus = matches.reduce((total, match) => total + match.xpBonus, 0);
+  const hypeText = matches.map((match) => match.hypeText).join(" · ");
+
+  return { statChanges, xpBonus, hypeText };
+}
+
+function collectEventTags(event: CalendarEvent) {
+  const metadataTags = Array.isArray(event.metadata?.tags)
+    ? event.metadata?.tags
+    : [];
+  const extendedTags = Array.isArray(event.extendedProps?.tags)
+    ? event.extendedProps?.tags
+    : [];
+  return [...metadataTags, ...extendedTags];
+}
+
+function inferStatFromEvent(event: CalendarEvent): StatKey {
+  const tagMatch = getMatchingTagDefinitions(collectEventTags(event))[0];
+  if (tagMatch) {
+    return tagMatch.statKey;
+  }
+
+  const keywordStat = inferStatFromContent(
+    `${event.title ?? ""} ${event.description ?? ""}`
+  );
+  if (keywordStat) {
+    return keywordStat;
+  }
+
+  return "focus";
+}
+
 function findActivityForToday(
   activityId: string,
   todayActivities: DailyActivityDefinition[]
@@ -131,7 +225,8 @@ export const useStatsStore = create<StatsState>()(
         amount: number,
         label: string,
         source: GainSummary["source"],
-        statChanges: StatChange[] = []
+        statChanges: StatChange[] = [],
+        hypeText?: string
       ): GainSummary => {
         const state = get();
         const timestamp = newDate().toISOString();
@@ -187,12 +282,26 @@ export const useStatsStore = create<StatsState>()(
           leveledUp,
           statChanges,
           timestamp,
+          hypeText,
         };
 
         const historyEntry: StatsEvent = {
-          id: generateId(),
           ...summary,
+          id: generateId(),
         };
+
+        const updatedUnlocked = new Set(state.unlockedAvatarIds);
+        if (leveledUp) {
+          if (level >= 3) {
+            updatedUnlocked.add("focus-prodigy");
+          }
+          if (level >= 6) {
+            updatedUnlocked.add("creative-spark");
+          }
+          if (level >= 9) {
+            updatedUnlocked.add("night-owl");
+          }
+        }
 
         set({
           level,
@@ -203,6 +312,7 @@ export const useStatsStore = create<StatsState>()(
           lastProgressDate: dateKey,
           currentStreak,
           longestStreak,
+          unlockedAvatarIds: Array.from(updatedUnlocked),
         });
 
         return summary;
@@ -219,6 +329,8 @@ export const useStatsStore = create<StatsState>()(
         lastProgressDate: undefined,
         currentStreak: 0,
         longestStreak: 0,
+        avatarId: DEFAULT_AVATAR_ID,
+        unlockedAvatarIds: INITIAL_UNLOCKED_AVATARS,
 
         adjustStat: (key, amount) => {
           const state = get();
@@ -236,9 +348,58 @@ export const useStatsStore = create<StatsState>()(
         awardTaskCompletion: (task) => {
           const statKey = inferStatFromTask(task);
           const statAmount = getStatGainForTask(task);
-          const statChange = get().adjustStat(statKey, statAmount);
-          const xp = calculateTaskXp(task);
-          return recordGain(xp, task.title, "task", [statChange]);
+          const statChanges: StatChange[] = [
+            get().adjustStat(statKey, statAmount),
+          ];
+          const tagResult = applyTagBonuses(task.tags, get().adjustStat);
+          if (tagResult.statChanges.length > 0) {
+            statChanges.push(...tagResult.statChanges);
+          }
+          const xp = calculateTaskXp(task) + tagResult.xpBonus;
+          return recordGain(xp, task.title, "task", statChanges, tagResult.hypeText);
+        },
+
+        awardEventCompletion: (event) => {
+          const start = newDate(event.start);
+          const end = event.end ? newDate(event.end) : newDate(event.start);
+          let durationMinutes = Math.max(
+            30,
+            Math.round(Math.abs(end.getTime() - start.getTime()) / 60000)
+          );
+          if (!Number.isFinite(durationMinutes)) {
+            durationMinutes = 30;
+          }
+
+          const statKey = inferStatFromEvent(event);
+          const baseStatAmount =
+            durationMinutes >= 180 ? 3 : durationMinutes >= 90 ? 2 : 1;
+
+          const statChanges: StatChange[] = [
+            get().adjustStat(statKey, baseStatAmount),
+          ];
+
+          const tagResult = applyTagBonuses(
+            collectEventTags(event),
+            get().adjustStat
+          );
+          if (tagResult.statChanges.length > 0) {
+            statChanges.push(...tagResult.statChanges);
+          }
+
+          const durationBonus = Math.min(
+            MAX_EVENT_XP_BONUS,
+            Math.round((durationMinutes / 60) * EVENT_XP_PER_HOUR)
+          );
+          const xp = BASE_EVENT_XP + durationBonus + tagResult.xpBonus;
+          const label = event.title || "Kalendereintrag";
+
+          return recordGain(
+            xp,
+            label,
+            "event",
+            statChanges,
+            tagResult.hypeText
+          );
         },
 
         completeDailyActivity: (activityId) => {
@@ -288,11 +449,36 @@ export const useStatsStore = create<StatsState>()(
           delete records[key];
           set({ completedDailyActivities: records });
         },
+
+        setAvatar: (avatarId) => {
+          const exists = AVATAR_PRESETS.some((preset) => preset.id === avatarId);
+          if (!exists) return;
+          const state = get();
+          if (
+            !state.unlockedAvatarIds.includes(avatarId) ||
+            state.avatarId === avatarId
+          ) {
+            return;
+          }
+          set({ avatarId });
+        },
+
+        unlockAvatar: (avatarId) => {
+          const exists = AVATAR_PRESETS.some((preset) => preset.id === avatarId);
+          if (!exists) return;
+          const state = get();
+          if (state.unlockedAvatarIds.includes(avatarId)) {
+            return;
+          }
+          set({
+            unlockedAvatarIds: [...state.unlockedAvatarIds, avatarId],
+          });
+        },
       };
     },
     {
       name: "stats-store",
-      version: 1,
+      version: 2,
     }
   )
 );
