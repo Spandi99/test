@@ -6,6 +6,9 @@ import { ActionType } from "@/components/ui/action-overlay";
 import { addDays, addHours, newDate } from "@/lib/date-utils";
 import { logger } from "@/lib/logger";
 
+import { showXpToast } from "@/components/stats/showXpToast";
+
+import { useStatsStore } from "@/store/stats";
 import { useTaskStore } from "@/store/task";
 
 import { FocusMode } from "@/types/focus";
@@ -203,7 +206,24 @@ export const useFocusModeStore = create<FocusModeStore>()(
               status: TaskStatus.COMPLETED,
             };
 
-            await taskStore.updateTask(currentTaskId, updates);
+            const previousTask = taskStore.tasks.find(
+              (task) => task.id === currentTaskId
+            );
+            const updatedTask = await taskStore.updateTask(
+              currentTaskId,
+              updates
+            );
+
+            if (
+              updatedTask.status === TaskStatus.COMPLETED &&
+              previousTask?.status !== TaskStatus.COMPLETED
+            ) {
+              const summary = useStatsStore
+                .getState()
+                .awardTaskCompletion(updatedTask);
+              showXpToast(summary);
+            }
+
             // Show celebration overlay
             logger.debug(
               "[FocusMode] Task successfully marked as completed in database",

@@ -6,6 +6,7 @@ import { BsKanban, BsListTask } from "react-icons/bs";
 import { toast } from "sonner";
 
 import { ProjectSidebar } from "@/components/projects/ProjectSidebar";
+import { showXpToast } from "@/components/stats/showXpToast";
 import { BoardView } from "@/components/tasks/BoardView/BoardView";
 import { TaskList } from "@/components/tasks/TaskList";
 import { TaskModal } from "@/components/tasks/TaskModal";
@@ -16,6 +17,7 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { cn } from "@/lib/utils";
 
 import { useProjectStore } from "@/store/project";
+import { useStatsStore } from "@/store/stats";
 import { useTaskStore } from "@/store/task";
 import { useTaskModalStore } from "@/store/taskModal";
 import { useTaskPageSettings } from "@/store/taskPageSettings";
@@ -75,7 +77,20 @@ export default function TasksPage() {
   };
 
   const handleStatusChange = async (taskId: string, status: TaskStatus) => {
-    await updateTask(taskId, { status });
+    const previousTask = tasks.find((task) => task.id === taskId);
+    const updatedTask = await updateTask(taskId, { status });
+
+    if (
+      updatedTask &&
+      status === TaskStatus.COMPLETED &&
+      previousTask?.status !== TaskStatus.COMPLETED
+    ) {
+      const summary = useStatsStore
+        .getState()
+        .awardTaskCompletion(updatedTask);
+      showXpToast(summary);
+    }
+
     await fetchTasks();
     await fetchProjects();
   };
