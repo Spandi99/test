@@ -161,10 +161,10 @@ account:
 
 The Radicale instance stores calendars under `/var/lib/radicale/collections`.
 Mount this directory to persist calendar data between container restarts. The
-Radicale configuration uses the fully qualified
-`radicale.storage.filesystem` backend so the bundled Python environment always
-finds the storage plugin, even when entry-point discovery is restricted on the
-Pi. During startup the entrypoint now launches Radicale via
+Radicale configuration explicitly selects the builtin `filesystem` backend so
+the bundled Python environment always loads the correct storage plugin even
+when entry-point discovery is restricted on the Pi. During startup the
+entrypoint now launches Radicale via
 `/opt/radicale/bin/radicale`, records all stdout/stderr in
 `${APP_STATE_DIR}/logs/radicale.log`, waits for the service to open
 `${RADICALE_LISTEN_HOST}:${RADICALE_LISTEN_PORT}`, and bails out early if the
