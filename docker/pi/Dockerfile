@@ -26,10 +26,12 @@ RUN apt-get update && \
       python3 \
       python3-pip \
       python3-venv \
+      python3-dev \
       postgresql \
       postgresql-client \
       postgresql-contrib \
       libpq-dev \
+      libffi-dev \
       build-essential \
       apache2-utils \
       netcat-openbsd \
@@ -39,7 +41,7 @@ RUN apt-get update && \
 
 RUN python3 -m venv /opt/radicale \
     && /opt/radicale/bin/pip install --no-cache-dir --upgrade pip \
-    && /opt/radicale/bin/pip install --no-cache-dir radicale \
+    && /opt/radicale/bin/pip install --no-cache-dir "radicale[bcrypt]" \
     && ln -s /opt/radicale/bin/radicale /usr/local/bin/radicale
 
 COPY docker/pi/radicale.config /etc/radicale/config
