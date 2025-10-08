@@ -590,110 +590,121 @@ export async function POST(request: NextRequest) {
     const desiredColor =
       sanitizeColor(payload.color) ?? parsed.calendarColor ?? null;
 
+    const orderedEvents = [...parsed.events].sort((a, b) => {
+      if (a.isMaster && !b.isMaster) return -1;
+      if (!a.isMaster && b.isMaster) return 1;
+      return a.start.getTime() - b.start.getTime();
+    });
+
+    const externalIdsToReplace = Array.from(
+      new Set(
+        orderedEvents
+          .map((event) => event.externalEventId?.trim())
+          .filter((id): id is string => typeof id === "string" && id.length > 0)
+      )
+    );
+
     const { feed, imported, skipped } = await prisma.$transaction(
       async (tx) => {
-      const resolvedFeed =
-        targetFeed ??
-        (await tx.calendarFeed.create({
-          data: {
-            name: feedName,
-            color: desiredColor ?? "#3b82f6",
-            type: "LOCAL",
-            enabled: true,
-            userId: auth.userId,
-          },
-        }));
-
-      const masterMap = new Map<string, string>();
-      let importedCount = 0;
-
-      const events = [...parsed.events].sort((a, b) => {
-        if (a.isMaster && !b.isMaster) return -1;
-        if (!a.isMaster && b.isMaster) return 1;
-        return a.start.getTime() - b.start.getTime();
-      });
-
-      let storageFailures = 0;
-
-      for (const event of events) {
-        try {
-          if (event.externalEventId) {
-            await tx.calendarEvent.deleteMany({
-              where: {
-                feedId: resolvedFeed.id,
-                externalEventId: event.externalEventId,
-              },
-            });
-          }
-
-          const masterEventId = event.masterUid
-            ? masterMap.get(event.masterUid) || null
-            : null;
-
-          const createdEvent = await tx.calendarEvent.create({
+        const resolvedFeed =
+          targetFeed ??
+          (await tx.calendarFeed.create({
             data: {
+              name: feedName,
+              color: desiredColor ?? "#3b82f6",
+              type: "LOCAL",
+              enabled: true,
+              userId: auth.userId,
+            },
+          }));
+
+        if (externalIdsToReplace.length) {
+          await tx.calendarEvent.deleteMany({
+            where: {
               feedId: resolvedFeed.id,
-              externalEventId: event.externalEventId,
-              title: event.title,
-              description: event.description,
-              start: event.start,
-              end: event.end,
-              location: event.location,
-              isRecurring: event.isRecurring,
-              recurrenceRule: event.recurrenceRule,
-              allDay: event.allDay,
-              status: event.status,
-              sequence: event.sequence,
-              created: event.created,
-              lastModified: event.lastModified,
-              isMaster: event.isMaster,
-              masterEventId,
-              recurringEventId: event.isRecurring
-                ? event.isMaster
-                  ? event.baseUid
-                  : event.masterUid || event.baseUid
-                : null,
-              organizer: event.organizer
-                ? {
-                    name: event.organizer.name,
-                    email: event.organizer.email,
-                  }
-                : undefined,
-              attendees: event.attendees?.length
-                ? event.attendees.map((attendee) => ({
-                    name: attendee.name,
-                    email: attendee.email,
-                    status: attendee.status,
-                  }))
-                : undefined,
+              externalEventId: { in: externalIdsToReplace },
             },
           });
-
-          if (event.isMaster) {
-            masterMap.set(event.baseUid, createdEvent.id);
-          }
-
-          importedCount += 1;
-        } catch (error) {
-          storageFailures += 1;
-          logger.error(
-            "Fehler beim Speichern eines Termins",
-            {
-              feedId: resolvedFeed.id,
-              externalEventId: event.externalEventId,
-              error: error instanceof Error ? error.message : String(error),
-            },
-            LOG_SOURCE
-          );
         }
-      }
 
-      return {
-        feed: resolvedFeed,
-        imported: importedCount,
-        skipped: parsed.skipped + storageFailures,
-      };
-    }
+        const masterMap = new Map<string, string>();
+        let importedCount = 0;
+        let storageFailures = 0;
+
+        for (const event of orderedEvents) {
+          try {
+            const masterEventId = event.masterUid
+              ? masterMap.get(event.masterUid) || null
+              : null;
+
+            const createdEvent = await tx.calendarEvent.create({
+              data: {
+                feedId: resolvedFeed.id,
+                externalEventId: event.externalEventId,
+                title: event.title,
+                description: event.description,
+                start: event.start,
+                end: event.end,
+                location: event.location,
+                isRecurring: event.isRecurring,
+                recurrenceRule: event.recurrenceRule,
+                allDay: event.allDay,
+                status: event.status,
+                sequence: event.sequence,
+                created: event.created,
+                lastModified: event.lastModified,
+                isMaster: event.isMaster,
+                masterEventId,
+                recurringEventId: event.isRecurring
+                  ? event.isMaster
+                    ? event.baseUid
+                    : event.masterUid || event.baseUid
+                  : null,
+                organizer: event.organizer
+                  ? {
+                      name: event.organizer.name,
+                      email: event.organizer.email,
+                    }
+                  : undefined,
+                attendees: event.attendees?.length
+                  ? event.attendees.map((attendee) => ({
+                      name: attendee.name,
+                      email: attendee.email,
+                      status: attendee.status,
+                    }))
+                  : undefined,
+              },
+            });
+
+            if (event.isMaster) {
+              masterMap.set(event.baseUid, createdEvent.id);
+            }
+
+            importedCount += 1;
+          } catch (error) {
+            storageFailures += 1;
+            logger.error(
+              "Fehler beim Speichern eines Termins",
+              {
+                feedId: resolvedFeed.id,
+                externalEventId: event.externalEventId,
+                error: error instanceof Error ? error.message : String(error),
+              },
+              LOG_SOURCE
+            );
+          }
+        }
+
+        return {
+          feed: resolvedFeed,
+          imported: importedCount,
+          skipped: parsed.skipped + storageFailures,
+        };
+      },
+      {
+        maxWait: 10_000,
+        timeout: 120_000,
+      }
     );
 
     logger.info(
