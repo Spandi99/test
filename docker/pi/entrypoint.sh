@@ -110,10 +110,17 @@ fi
 
 if ! su - postgres -c "psql -tAc \"SELECT 1 FROM pg_database WHERE datname='${POSTGRES_DB}'\"" | grep -q 1; then
   echo "Creating database ${POSTGRES_DB}..."
-  su - postgres -c "createdb ${POSTGRES_DB}"
+  su - postgres -c "createdb -O ${POSTGRES_USER} ${POSTGRES_DB}"
 fi
 
-su - postgres -c "psql -c \"GRANT ALL PRIVILEGES ON DATABASE ${POSTGRES_DB} TO ${POSTGRES_USER}\"" >/dev/null
+su - postgres -c "psql -c 'ALTER DATABASE ${POSTGRES_DB} OWNER TO ${POSTGRES_USER}'" >/dev/null
+su - postgres -c "psql -c 'GRANT ALL PRIVILEGES ON DATABASE ${POSTGRES_DB} TO ${POSTGRES_USER}'" >/dev/null
+su - postgres -c "psql -d ${POSTGRES_DB} -c 'ALTER SCHEMA public OWNER TO ${POSTGRES_USER}'" >/dev/null
+su - postgres -c "psql -d ${POSTGRES_DB} -c 'GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO ${POSTGRES_USER}'" >/dev/null
+su - postgres -c "psql -d ${POSTGRES_DB} -c 'GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO ${POSTGRES_USER}'" >/dev/null
+su - postgres -c "psql -d ${POSTGRES_DB} -c 'GRANT ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public TO ${POSTGRES_USER}'" >/dev/null
+su - postgres -c "psql -d ${POSTGRES_DB} -c 'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO ${POSTGRES_USER}'" >/dev/null
+su - postgres -c "psql -d ${POSTGRES_DB} -c 'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO ${POSTGRES_USER}'" >/dev/null
 
 # Prepare Radicale storage and users
 mkdir -p "${RADICALE_STORAGE}"
