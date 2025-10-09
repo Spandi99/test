@@ -39,7 +39,7 @@ export function StatsHistory({ events, compact = false }: StatsHistoryProps) {
             <div
               key={event.id}
               className={cn(
-                "flex flex-col gap-2 rounded-lg border border-border/70 bg-background/60 p-4 shadow-sm md:flex-row md:items-center md:justify-between",
+                "flex flex-col gap-2 overflow-hidden rounded-lg border border-border/70 bg-background/60 p-4 shadow-sm md:flex-row md:items-center md:justify-between",
                 compact && "gap-1 rounded-xl p-3"
               )}
             >
@@ -47,9 +47,18 @@ export function StatsHistory({ events, compact = false }: StatsHistoryProps) {
                 <span className="text-sm font-semibold text-foreground">
                   {SOURCE_LABEL[event.source]}
                 </span>
-                <span className={cn("text-sm text-muted-foreground", compact && "text-xs")}>{event.label}</span>
+                <span
+                  className={cn(
+                    "text-pretty text-sm text-muted-foreground break-words",
+                    compact && "text-xs"
+                  )}
+                >
+                  {event.label}
+                </span>
                 {event.hypeText && (
-                  <span className="text-xs text-primary/80">{event.hypeText}</span>
+                  <span className="text-pretty text-xs text-primary/80 break-words">
+                    {event.hypeText}
+                  </span>
                 )}
                 <span className="text-xs text-muted-foreground">
                   {format(
