@@ -14,6 +14,7 @@ import {
   createConditionalLearningEvents,
   hasConditionalLearningFlag,
 } from "@/lib/conditional-learning";
+import { ensureTagProgressionSchema } from "@/lib/schema-guards";
 
 const LOG_SOURCE = "events-route";
 
@@ -121,6 +122,8 @@ export async function POST(request: NextRequest) {
         ? null
         : (incomingMetadata as Prisma.InputJsonObject | undefined);
 
+    await ensureTagProgressionSchema();
+
     let tags: CalendarTagMetadata[] | undefined;
     if (Array.isArray(tagIds) && tagIds.length > 0) {
       tags = await prisma.tag.findMany({
@@ -181,19 +184,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ event: created[0], events: created });
     }
 
+    const createData = {
+      feed: { connect: { id: feedId } },
+      title,
+      description: description ?? null,
+      start: startDate,
+      end: endDate,
+      location: location ?? null,
+      isRecurring: isRecurring ?? false,
+      recurrenceRule: recurrenceRule ?? null,
+      allDay: allDay ?? false,
+      metadata: metadataPayload ?? { feedType: feed.type },
+    };
+
     const event = await prisma.calendarEvent.create({
-      data: {
-        feedId,
-        title,
-        description,
-        start: startDate,
-        end: endDate,
-        location,
-        isRecurring: isRecurring || false,
-        recurrenceRule,
-        allDay: allDay || false,
-        metadata: metadataPayload ?? { feedType: feed.type },
-      },
+      data: createData as unknown as Prisma.CalendarEventUncheckedCreateInput,
       include: {
         feed: {
           select: {
@@ -273,6 +278,8 @@ export async function PATCH(request: NextRequest) {
         ? null
         : (incomingMetadata as Prisma.InputJsonObject | undefined);
 
+    await ensureTagProgressionSchema();
+
     let tags: CalendarTagMetadata[] | undefined;
     if (Array.isArray(tagIds) && tagIds.length > 0) {
       tags = await prisma.tag.findMany({
@@ -290,8 +297,11 @@ export async function PATCH(request: NextRequest) {
       tags = [];
     }
 
+    const existingMetadata =
+      (existingEvent as { metadata?: Prisma.JsonValue | null }).metadata ?? null;
+
     const metadataPayload = buildEventMetadata({
-      existing: existingEvent.metadata,
+      existing: existingMetadata,
       incoming: metadataInput ?? undefined,
       tags,
       feedType: existingEvent.feed.type,
@@ -340,19 +350,23 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ event: created[0], events: created });
     }
 
+    const updateData: Record<string, unknown> = {
+      metadata: metadataPayload ?? { feedType: existingEvent.feed.type },
+    };
+
+    if (title !== undefined) updateData.title = title;
+    if (description !== undefined) updateData.description = description;
+    if (start !== undefined) updateData.start = startDate;
+    if (end !== undefined) updateData.end = endDate;
+    if (location !== undefined) updateData.location = location;
+    if (isRecurring !== undefined) updateData.isRecurring = isRecurring;
+    if (recurrenceRule !== undefined)
+      updateData.recurrenceRule = recurrenceRule;
+    if (allDay !== undefined) updateData.allDay = allDay;
+
     const event = await prisma.calendarEvent.update({
       where: { id },
-      data: {
-        title,
-        description,
-        start: start ? startDate : undefined,
-        end: end ? endDate : undefined,
-        location,
-        isRecurring,
-        recurrenceRule,
-        allDay,
-        metadata: metadataPayload ?? { feedType: existingEvent.feed.type },
-      },
+      data: updateData as unknown as Prisma.CalendarEventUpdateInput,
       include: {
         feed: {
           select: {

@@ -200,19 +200,21 @@ export async function createConditionalLearningEvents({
       payload.originalEnd = end.toISOString();
     }
 
+    const createData = {
+      feed: { connect: { id: feedId } },
+      title: baseData.title,
+      description: baseData.description ?? null,
+      location: baseData.location ?? null,
+      start: segment.start,
+      end: segment.end,
+      isRecurring: baseData.isRecurring ?? false,
+      recurrenceRule: baseData.recurrenceRule ?? null,
+      allDay: baseData.allDay ?? false,
+      metadata: metadataForSegment,
+    };
+
     const created = await prisma.calendarEvent.create({
-      data: {
-        feedId,
-        title: baseData.title,
-        description: baseData.description ?? null,
-        location: baseData.location ?? null,
-        start: segment.start,
-        end: segment.end,
-        isRecurring: baseData.isRecurring ?? false,
-        recurrenceRule: baseData.recurrenceRule ?? null,
-        allDay: baseData.allDay ?? false,
-        metadata: metadataForSegment,
-      },
+      data: createData as unknown as Prisma.CalendarEventUncheckedCreateInput,
       include: {
         feed: {
           select: {

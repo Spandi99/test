@@ -11,6 +11,7 @@ import {
   buildEventMetadata,
   CalendarTagMetadata,
 } from "@/lib/calendar-metadata";
+import { ensureTagProgressionSchema } from "@/lib/schema-guards";
 import {
   createConditionalLearningEvents,
   hasConditionalLearningFlag,
@@ -109,6 +110,8 @@ export async function PATCH(
         ? null
         : (updates.metadata as Prisma.InputJsonObject | undefined);
 
+    await ensureTagProgressionSchema();
+
     let tags: CalendarTagMetadata[] | undefined;
     if (Array.isArray(updates.tagIds) && updates.tagIds.length > 0) {
       tags = await prisma.tag.findMany({
@@ -126,8 +129,11 @@ export async function PATCH(
       tags = [];
     }
 
+    const existingMetadata =
+      (existingEvent as { metadata?: Prisma.JsonValue | null }).metadata ?? null;
+
     const metadataPayload = buildEventMetadata({
-      existing: existingEvent.metadata,
+      existing: existingMetadata,
       incoming: metadataInput ?? undefined,
       tags,
       feedType: existingEvent.feed.type,
@@ -186,15 +192,25 @@ export async function PATCH(
       return NextResponse.json({ event: created[0], events: created });
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { metadata: _metadata, tagIds: _tagIds, ...rest } = updates;
+    const updateData: Record<string, unknown> = {
+      metadata: metadataPayload ?? { feedType: existingEvent.feed.type },
+    };
+
+    if (updates.title !== undefined) updateData.title = updates.title;
+    if (updates.description !== undefined)
+      updateData.description = updates.description;
+    if (updates.start !== undefined) updateData.start = startDate;
+    if (updates.end !== undefined) updateData.end = endDate;
+    if (updates.location !== undefined) updateData.location = updates.location;
+    if (updates.isRecurring !== undefined)
+      updateData.isRecurring = updates.isRecurring;
+    if (updates.recurrenceRule !== undefined)
+      updateData.recurrenceRule = updates.recurrenceRule;
+    if (updates.allDay !== undefined) updateData.allDay = updates.allDay;
 
     const updated = await prisma.calendarEvent.update({
       where: { id },
-      data: {
-        ...rest,
-        metadata: metadataPayload ?? { feedType: existingEvent.feed.type },
-      },
+      data: updateData as unknown as Prisma.CalendarEventUpdateInput,
       include: {
         feed: {
           select: {

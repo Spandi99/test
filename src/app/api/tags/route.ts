@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { Prisma } from "@prisma/client";
+
 import { authenticateRequest } from "@/lib/auth/api-auth";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
+import { ensureTagProgressionSchema } from "@/lib/schema-guards";
 
 const LOG_SOURCE = "tags-route";
 
@@ -14,6 +17,8 @@ export async function GET(request: NextRequest) {
     }
 
     const userId = auth.userId;
+
+    await ensureTagProgressionSchema();
 
     const tags = await prisma.tag.findMany({
       where: {
@@ -46,6 +51,8 @@ export async function POST(request: NextRequest) {
     }
 
     const userId = auth.userId;
+
+    await ensureTagProgressionSchema();
 
     const body = await request.json();
     logger.debug("Received tag creation request", { body }, LOG_SOURCE);
@@ -102,15 +109,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const data = {
+      name,
+      color: color ?? null,
+      category: category ?? null,
+      statKey: statKey ?? null,
+      user: userId ? { connect: { id: userId } } : undefined,
+    };
+
     const tag = await prisma.tag.create({
-      data: {
-        name,
-        color,
-        category,
-        statKey,
-        // Associate the tag with the current user
-        userId,
-      },
+      data: data as unknown as Prisma.TagUncheckedCreateInput,
     });
 
     return NextResponse.json(tag);

@@ -69,6 +69,8 @@ export async function getEvent(
   if (!event) return null;
 
   // Map Prisma result to our CalendarEventWithFeed type
+  const rawMetadata = (event as { metadata?: Prisma.JsonValue | null }).metadata;
+
   return {
     ...event,
     externalEventId: event.externalEventId || undefined,
@@ -85,7 +87,7 @@ export async function getEvent(
       | undefined,
     masterEventId: event.masterEventId || undefined,
     recurringEventId: event.recurringEventId || undefined,
-    metadata: normalizeMetadata(event.metadata as Prisma.JsonValue | null),
+    metadata: normalizeMetadata(rawMetadata ?? null),
     feed: {
       ...event.feed,
       type: event.feed.type as "GOOGLE" | "OUTLOOK" | "CALDAV" | "LOCAL",

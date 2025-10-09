@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { randomUUID } from "crypto";
+
+import { Prisma } from "@prisma/client";
+
 import { authenticateRequest } from "@/lib/auth/api-auth";
 import { newDate } from "@/lib/date-utils";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
+import { ensureProductivitySampleSchema } from "@/lib/schema-guards";
 
 const LOG_SOURCE = "productivity-log";
 
@@ -21,6 +26,7 @@ export async function POST(request: NextRequest) {
     }
 
     const userId = auth.userId;
+    await ensureProductivitySampleSchema();
     const body = await request.json();
 
     const {
@@ -61,23 +67,39 @@ export async function POST(request: NextRequest) {
         ? { ...(metadata as Record<string, unknown>), statKey }
         : { statKey };
 
-    const sample = await prisma.productivitySample.create({
-      data: {
-        userId,
-        sourceType,
-        sourceId,
-        recordedAt: recorded,
-        dayOfWeek,
-        hourOfDay,
-        duration,
-        taskType,
-        energyLevel: coerceNumber(energyLevel),
-        overlapWithUni: Boolean(overlapWithUni),
-        success: Boolean(success),
-        mood: coerceNumber(mood),
-        metadata: metadataPayload,
-      },
-    });
+    const id = randomUUID();
+    const metadataValue = metadataPayload as unknown as Prisma.JsonValue | null;
+    await prisma.$executeRaw`
+      INSERT INTO "ProductivitySample" (
+        "id", "userId", "sourceType", "sourceId", "recordedAt", "dayOfWeek",
+        "hourOfDay", "duration", "taskType", "energyLevel", "overlapWithUni",
+        "success", "mood", "metadata", "createdAt", "updatedAt"
+      ) VALUES (
+        ${id}, ${userId}, ${sourceType}, ${sourceId}, ${recorded}, ${dayOfWeek},
+        ${hourOfDay}, ${duration}, ${taskType}, ${coerceNumber(energyLevel)},
+        ${Boolean(overlapWithUni)}, ${Boolean(success)}, ${coerceNumber(mood)},
+        ${metadataValue}, ${recorded}, ${recorded}
+      )
+    `;
+
+    const sample = {
+      id,
+      userId,
+      sourceType,
+      sourceId,
+      recordedAt: recorded,
+      dayOfWeek,
+      hourOfDay,
+      duration,
+      taskType,
+      energyLevel: coerceNumber(energyLevel),
+      overlapWithUni: Boolean(overlapWithUni),
+      success: Boolean(success),
+      mood: coerceNumber(mood),
+      metadata: metadataValue,
+      createdAt: recorded,
+      updatedAt: recorded,
+    };
 
     return NextResponse.json(sample);
   } catch (error) {
@@ -101,12 +123,49 @@ export async function GET(request: NextRequest) {
     }
 
     const userId = auth.userId;
+    await ensureProductivitySampleSchema();
     const { searchParams } = new URL(request.url);
     const format = searchParams.get("format");
 
-    const samples = await prisma.productivitySample.findMany({
-      where: { userId },
-      orderBy: { recordedAt: "desc" },
+    type ProductivitySampleRow = {
+      id: string;
+      userId: string;
+      sourceType: string;
+      sourceId: string;
+      recordedAt: Date;
+      dayOfWeek: number;
+      hourOfDay: number;
+      duration: number;
+      taskType: string;
+      energyLevel: number | null;
+      overlapWithUni: boolean;
+      success: boolean;
+      mood: number | null;
+      metadata: unknown;
+      createdAt: Date;
+      updatedAt: Date;
+    };
+
+    const rows = await prisma.$queryRaw<ProductivitySampleRow[]>`
+      SELECT *
+      FROM "ProductivitySample"
+      WHERE "userId" = ${userId}
+      ORDER BY "recordedAt" DESC
+    `;
+
+    const samples = rows.map((row) => {
+      let metadata: Record<string, unknown> | null = null;
+      if (row.metadata && typeof row.metadata === "object") {
+        metadata = row.metadata as Record<string, unknown>;
+      } else if (row.metadata) {
+        try {
+          metadata = JSON.parse(String(row.metadata)) as Record<string, unknown>;
+        } catch {
+          metadata = null;
+        }
+      }
+
+      return { ...row, metadata };
     });
 
     if (format === "csv") {
