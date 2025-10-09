@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import {
   buildEventMetadata,
   CalendarTagMetadata,
+  normalizeIncomingFlags,
 } from "@/lib/calendar-metadata";
 import { ensureTagProgressionSchema } from "@/lib/schema-guards";
 import {
@@ -144,10 +145,19 @@ export async function PATCH(
     const existingMetadata =
       (existingEvent as { metadata?: Prisma.JsonValue | null }).metadata ?? null;
 
+    const hasIncomingFlags =
+      metadataInput && typeof metadataInput === "object" && "flags" in metadataInput;
+    const normalizedFlags = hasIncomingFlags
+      ? normalizeIncomingFlags(
+          (metadataInput as { flags?: unknown }).flags ?? []
+        ) ?? []
+      : undefined;
+
     const metadataPayload = buildEventMetadata({
       existing: metadataInput ? null : existingMetadata,
       incoming: metadataInput ?? undefined,
       tags,
+      flags: normalizedFlags,
       feedType: existingEvent.feed.type,
     });
 
@@ -160,9 +170,12 @@ export async function PATCH(
         ? newDate(updates.end)
         : newDate(existingEvent.end ?? existingEvent.start);
 
-    const shouldSplit = hasConditionalLearningFlag(
-      metadataInput ?? metadataPayload ?? existingMetadata
-    );
+    const metadataForSplit =
+      normalizedFlags !== undefined
+        ? { ...(metadataInput ?? {}), flags: normalizedFlags }
+        : metadataInput ?? metadataPayload ?? existingMetadata;
+
+    const shouldSplit = hasConditionalLearningFlag(metadataForSplit);
 
     if (shouldSplit) {
       const created = await prisma.$transaction(async (tx) => {

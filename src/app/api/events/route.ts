@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import {
   buildEventMetadata,
   CalendarTagMetadata,
+  normalizeIncomingFlags,
 } from "@/lib/calendar-metadata";
 import {
   createConditionalLearningEvents,
@@ -153,19 +154,31 @@ export async function POST(request: NextRequest) {
       tags = [];
     }
 
+    const hasIncomingFlags =
+      metadataInput && typeof metadataInput === "object" && "flags" in metadataInput;
+    const normalizedFlags = hasIncomingFlags
+      ? normalizeIncomingFlags(
+          (metadataInput as { flags?: unknown }).flags ?? []
+        ) ?? []
+      : undefined;
+
     const metadataPayload = buildEventMetadata({
       existing: null,
       incoming: metadataInput ?? undefined,
       tags,
+      flags: normalizedFlags,
       feedType: feed.type,
     });
 
     const startDate = newDate(start);
     const endDate = newDate(end);
 
-    const shouldSplit = hasConditionalLearningFlag(
-      metadataInput ?? metadataPayload ?? undefined
-    );
+    const metadataForSplit =
+      normalizedFlags !== undefined
+        ? { ...(metadataInput ?? {}), flags: normalizedFlags }
+        : metadataInput ?? metadataPayload ?? undefined;
+
+    const shouldSplit = hasConditionalLearningFlag(metadataForSplit);
 
     if (shouldSplit) {
       const created = await prisma.$transaction((tx) =>
@@ -328,10 +341,19 @@ export async function PATCH(request: NextRequest) {
     const existingMetadata =
       (existingEvent as { metadata?: Prisma.JsonValue | null }).metadata ?? null;
 
+    const hasIncomingFlags =
+      metadataInput && typeof metadataInput === "object" && "flags" in metadataInput;
+    const normalizedFlags = hasIncomingFlags
+      ? normalizeIncomingFlags(
+          (metadataInput as { flags?: unknown }).flags ?? []
+        ) ?? []
+      : undefined;
+
     const metadataPayload = buildEventMetadata({
       existing: existingMetadata,
       incoming: metadataInput ?? undefined,
       tags,
+      flags: normalizedFlags,
       feedType: existingEvent.feed.type,
     });
 
@@ -340,9 +362,12 @@ export async function PATCH(request: NextRequest) {
       ? newDate(end)
       : newDate(existingEvent.end ?? existingEvent.start);
 
-    const shouldSplit = hasConditionalLearningFlag(
-      metadataInput ?? metadataPayload ?? existingMetadata
-    );
+    const metadataForSplit =
+      normalizedFlags !== undefined
+        ? { ...(metadataInput ?? {}), flags: normalizedFlags }
+        : metadataInput ?? metadataPayload ?? existingMetadata;
+
+    const shouldSplit = hasConditionalLearningFlag(metadataForSplit);
 
     if (shouldSplit) {
       const created = await prisma.$transaction(async (tx) => {
