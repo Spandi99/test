@@ -221,7 +221,9 @@ export const useFocusModeStore = create<FocusModeStore>()(
               const summary = useStatsStore
                 .getState()
                 .awardTaskCompletion(updatedTask);
-              showXpToast(summary);
+              if (summary) {
+                showXpToast(summary);
+              }
             }
 
             // Show celebration overlay
