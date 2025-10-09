@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import {
   buildEventMetadata,
   CalendarTagMetadata,
+  normalizeIncomingFlags,
 } from "@/lib/calendar-metadata";
 import {
   createConditionalLearningEvents,
@@ -153,17 +154,31 @@ export async function POST(request: NextRequest) {
       tags = [];
     }
 
+    const hasIncomingFlags =
+      metadataInput && typeof metadataInput === "object" && "flags" in metadataInput;
+    const normalizedFlags = hasIncomingFlags
+      ? normalizeIncomingFlags(
+          (metadataInput as { flags?: unknown }).flags ?? []
+        ) ?? []
+      : undefined;
+
     const metadataPayload = buildEventMetadata({
       existing: null,
       incoming: metadataInput ?? undefined,
       tags,
+      flags: normalizedFlags,
       feedType: feed.type,
     });
 
     const startDate = newDate(start);
     const endDate = newDate(end);
 
-    const shouldSplit = hasConditionalLearningFlag(metadataInput);
+    const metadataForSplit =
+      normalizedFlags !== undefined
+        ? { ...(metadataInput ?? {}), flags: normalizedFlags }
+        : metadataInput ?? metadataPayload ?? undefined;
+
+    const shouldSplit = hasConditionalLearningFlag(metadataForSplit);
 
     if (shouldSplit) {
       const created = await prisma.$transaction((tx) =>
@@ -294,11 +309,23 @@ export async function PATCH(request: NextRequest) {
 
     await ensureTagProgressionSchema();
 
+    const requestedTagIds = Array.isArray(tagIds)
+      ? tagIds
+      : Array.isArray(metadataInput?.tags)
+        ? metadataInput?.tags
+            .map((tag) =>
+              typeof tag === "object" && tag !== null && "id" in tag
+                ? String(tag.id)
+                : undefined
+            )
+            .filter((tagId): tagId is string => Boolean(tagId))
+        : undefined;
+
     let tags: CalendarTagMetadata[] | undefined;
-    if (Array.isArray(tagIds) && tagIds.length > 0) {
+    if (requestedTagIds && requestedTagIds.length > 0) {
       tags = await prisma.tag.findMany({
         where: {
-          id: { in: tagIds },
+          id: { in: requestedTagIds },
           userId,
         },
         select: {
@@ -314,10 +341,19 @@ export async function PATCH(request: NextRequest) {
     const existingMetadata =
       (existingEvent as { metadata?: Prisma.JsonValue | null }).metadata ?? null;
 
+    const hasIncomingFlags =
+      metadataInput && typeof metadataInput === "object" && "flags" in metadataInput;
+    const normalizedFlags = hasIncomingFlags
+      ? normalizeIncomingFlags(
+          (metadataInput as { flags?: unknown }).flags ?? []
+        ) ?? []
+      : undefined;
+
     const metadataPayload = buildEventMetadata({
       existing: existingMetadata,
       incoming: metadataInput ?? undefined,
       tags,
+      flags: normalizedFlags,
       feedType: existingEvent.feed.type,
     });
 
@@ -326,7 +362,14 @@ export async function PATCH(request: NextRequest) {
       ? newDate(end)
       : newDate(existingEvent.end ?? existingEvent.start);
 
-    if (metadataInput && hasConditionalLearningFlag(metadataInput)) {
+    const metadataForSplit =
+      normalizedFlags !== undefined
+        ? { ...(metadataInput ?? {}), flags: normalizedFlags }
+        : metadataInput ?? metadataPayload ?? existingMetadata;
+
+    const shouldSplit = hasConditionalLearningFlag(metadataForSplit);
+
+    if (shouldSplit) {
       const created = await prisma.$transaction(async (tx) => {
         const events = await createConditionalLearningEvents({
           prisma: tx,

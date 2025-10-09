@@ -5,7 +5,11 @@ import { Prisma, PrismaClient } from "@prisma/client";
 const MIN_SEGMENT_MINUTES = 60;
 
 function isJsonNull(value: unknown): boolean {
-  return value === Prisma.JsonNull;
+  return (
+    value === Prisma.JsonNull ||
+    value === Prisma.DbNull ||
+    value === Prisma.AnyNull
+  );
 }
 
 type BaseEventData = {
@@ -25,7 +29,14 @@ type CalendarEventRecord = {
   feed?: { type?: string | null } | null;
 };
 
-function extractFlags(metadata: Prisma.JsonValue | null | undefined): string[] {
+function extractFlags(
+  metadata:
+    | Prisma.JsonValue
+    | Prisma.InputJsonValue
+    | Prisma.NullableJsonNullValueInput
+    | null
+    | undefined
+): string[] {
   if (!metadata || isJsonNull(metadata)) {
     return [];
   }
@@ -234,14 +245,12 @@ export async function createConditionalLearningEvents({
 }
 
 export function hasConditionalLearningFlag(
-  metadata: Prisma.InputJsonObject | null | undefined
+  metadata:
+    | Prisma.JsonValue
+    | Prisma.InputJsonValue
+    | Prisma.NullableJsonNullValueInput
+    | null
+    | undefined
 ): boolean {
-  if (!metadata) {
-    return false;
-  }
-  const flags = metadata.flags;
-  if (!Array.isArray(flags)) {
-    return false;
-  }
-  return flags.some((flag) => flag === "conditional-learning");
+  return extractFlags(metadata).some((flag) => flag === "conditional-learning");
 }
