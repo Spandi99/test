@@ -56,7 +56,7 @@ export function StatsDailyActivities({
             <div
               key={activity.id}
               className={cn(
-                "flex flex-col justify-between gap-3 rounded-lg border border-border/70 bg-background/50 p-4 shadow-sm transition hover:border-primary/50 hover:shadow-md md:flex-row md:items-center",
+                "flex flex-col justify-between gap-3 overflow-hidden rounded-lg border border-border/70 bg-background/50 p-4 shadow-sm transition hover:border-primary/50 hover:shadow-md md:flex-row md:items-center",
                 compact && "gap-2 rounded-xl p-3"
               )}
             >
@@ -66,7 +66,7 @@ export function StatsDailyActivities({
                 </div>
                 <div className="space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h4 className="text-base font-semibold text-foreground">
+                    <h4 className="break-words text-base font-semibold text-foreground">
                       {activity.label}
                     </h4>
                     <span
@@ -88,7 +88,7 @@ export function StatsDailyActivities({
                   </div>
                   <p
                     className={cn(
-                      "text-sm text-muted-foreground",
+                      "text-pretty text-sm text-muted-foreground break-words",
                       compact && "text-xs"
                     )}
                   >

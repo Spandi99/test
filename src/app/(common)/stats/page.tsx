@@ -17,6 +17,7 @@ import { StatsAvatar } from "@/components/stats/StatsAvatar";
 import { StatsDailyActivities } from "@/components/stats/StatsDailyActivities";
 import { StatsHistory } from "@/components/stats/StatsHistory";
 import { StatsProgress } from "@/components/stats/StatsProgress";
+import { StatsInfoBox } from "@/components/stats/StatsInfoBox";
 import { showXpToast } from "@/components/stats/showXpToast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -148,23 +149,13 @@ export default function StatsPage() {
                   xpForNextLevel={Math.round(xpForNextLevel)}
                   lifetimeXp={Math.round(lifetimeXp)}
                 />
-                <div className="grid gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-200/80 shadow-inner md:grid-cols-2">
-                  <div>
-                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-200/90">
-                      Aktueller Fokus
-                    </span>
-                    <p className="mt-1 text-sm text-slate-100/90">
-                      {STAT_DEFINITIONS[dominantStat].description}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-200/90">
-                      Streak
-                    </span>
-                    <p className="mt-1 text-sm text-slate-100/90">
-                      {currentStreak} Tage in Folge · Rekord: {longestStreak} Tage
-                    </p>
-                  </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <StatsInfoBox label="Aktueller Fokus">
+                    {STAT_DEFINITIONS[dominantStat].description}
+                  </StatsInfoBox>
+                  <StatsInfoBox label="Streak">
+                    {currentStreak} Tage in Folge · Rekord: {longestStreak} Tage
+                  </StatsInfoBox>
                 </div>
                 {!avatarFinalized ? (
                   <div className="space-y-3 rounded-2xl border border-white/10 bg-slate-950/60 p-4">
