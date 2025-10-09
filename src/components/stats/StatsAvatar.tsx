@@ -345,11 +345,11 @@ export const StatsAvatar = memo(function StatsAvatar({
                 {definition.label}
               </span>
             </div>
-            <div className="flex w-full max-w-[18rem] flex-col items-center gap-2 rounded-xl bg-white/10 px-4 py-3 text-center text-white shadow-inner backdrop-blur-sm">
-              <h3 className="w-full text-balance text-lg font-semibold tracking-wide">
+            <div className="flex w-full max-w-[18rem] flex-col items-center gap-2 overflow-hidden rounded-xl bg-white/10 px-4 py-3 text-center text-white shadow-inner backdrop-blur-sm">
+              <h3 className="w-full break-words text-balance text-lg font-semibold tracking-wide">
                 {avatar.label}
               </h3>
-              <p className="w-full text-pretty text-xs leading-relaxed text-white/80 sm:text-sm">
+              <p className="w-full break-words text-pretty text-xs leading-relaxed text-white/80 sm:text-sm">
                 {avatar.description}
               </p>
             </div>

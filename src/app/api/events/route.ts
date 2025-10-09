@@ -124,11 +124,23 @@ export async function POST(request: NextRequest) {
 
     await ensureTagProgressionSchema();
 
+    const requestedTagIds = Array.isArray(tagIds)
+      ? tagIds
+      : Array.isArray(metadataInput?.tags)
+        ? metadataInput?.tags
+            .map((tag) =>
+              typeof tag === "object" && tag !== null && "id" in tag
+                ? String(tag.id)
+                : undefined
+            )
+            .filter((id): id is string => Boolean(id))
+        : undefined;
+
     let tags: CalendarTagMetadata[] | undefined;
-    if (Array.isArray(tagIds) && tagIds.length > 0) {
+    if (requestedTagIds && requestedTagIds.length > 0) {
       tags = await prisma.tag.findMany({
         where: {
-          id: { in: tagIds },
+          id: { in: requestedTagIds },
           userId,
         },
         select: {
@@ -137,6 +149,8 @@ export async function POST(request: NextRequest) {
           color: true,
         },
       });
+    } else if (Array.isArray(tagIds) && tagIds.length === 0) {
+      tags = [];
     }
 
     const metadataPayload = buildEventMetadata({

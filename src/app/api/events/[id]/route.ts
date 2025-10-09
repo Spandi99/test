@@ -112,11 +112,23 @@ export async function PATCH(
 
     await ensureTagProgressionSchema();
 
+    const requestedTagIds = Array.isArray(updates.tagIds)
+      ? updates.tagIds
+      : Array.isArray(metadataInput?.tags)
+        ? metadataInput?.tags
+            .map((tag) =>
+              typeof tag === "object" && tag !== null && "id" in tag
+                ? String(tag.id)
+                : undefined
+            )
+            .filter((id): id is string => Boolean(id))
+        : undefined;
+
     let tags: CalendarTagMetadata[] | undefined;
-    if (Array.isArray(updates.tagIds) && updates.tagIds.length > 0) {
+    if (requestedTagIds && requestedTagIds.length > 0) {
       tags = await prisma.tag.findMany({
         where: {
-          id: { in: updates.tagIds },
+          id: { in: requestedTagIds },
           userId,
         },
         select: {
@@ -133,7 +145,7 @@ export async function PATCH(
       (existingEvent as { metadata?: Prisma.JsonValue | null }).metadata ?? null;
 
     const metadataPayload = buildEventMetadata({
-      existing: existingMetadata,
+      existing: metadataInput ? null : existingMetadata,
       incoming: metadataInput ?? undefined,
       tags,
       feedType: existingEvent.feed.type,
@@ -193,7 +205,11 @@ export async function PATCH(
     }
 
     const updateData: Record<string, unknown> = {
-      metadata: metadataPayload ?? { feedType: existingEvent.feed.type },
+      metadata:
+        metadataPayload ??
+        (metadataInput === null
+          ? Prisma.JsonNull
+          : { feedType: existingEvent.feed.type }),
     };
 
     if (updates.title !== undefined) updateData.title = updates.title;
