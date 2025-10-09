@@ -71,11 +71,27 @@ export default function TasksPage() {
   };
 
   const handleUpdateTask = async (task: NewTask) => {
-    if (selectedTask) {
-      await updateTask(selectedTask.id, task);
-      await fetchTasks();
-      await fetchProjects();
+    if (!selectedTask) {
+      return;
     }
+
+    const previousStatus = selectedTask.status;
+    const updatedTask = await updateTask(selectedTask.id, task);
+
+    if (
+      updatedTask &&
+      updatedTask.status === TaskStatus.COMPLETED &&
+      previousStatus !== TaskStatus.COMPLETED
+    ) {
+      const summary = useStatsStore
+        .getState()
+        .awardTaskCompletion(updatedTask);
+      showXpToast(summary);
+      mapTaskToSample(updatedTask);
+    }
+
+    await fetchTasks();
+    await fetchProjects();
   };
 
   const handleDeleteTask = async (taskId: string) => {
