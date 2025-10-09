@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { HiCheck, HiPencil, HiTrash } from "react-icons/hi";
+import { HiCheck, HiPencil, HiTrash, HiX } from "react-icons/hi";
+import { toast } from "sonner";
 import {
   IoCalendarOutline,
   IoFlagOutline,
@@ -14,7 +15,14 @@ import {
   IoTimeOutline,
 } from "react-icons/io5";
 
-import { format, isFutureDate, newDate } from "@/lib/date-utils";
+import {
+  addDays,
+  addHours,
+  format,
+  formatToLocalISOString,
+  isFutureDate,
+  newDate,
+} from "@/lib/date-utils";
 import { mapEventToSample } from "@/lib/productivity";
 import { isTaskOverdue } from "@/lib/task-utils";
 import { cn } from "@/lib/utils";
@@ -25,11 +33,25 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+
 import { showXpToast } from "@/components/stats/showXpToast";
 
 import { AttendeeStatus, CalendarEvent } from "@/types/calendar";
 import { Priority, Task, TaskStatus } from "@/types/task";
-import { useStatsStore } from "@/store/stats";
+import { useCalendarStore } from "@/store/calendar";
+import { getEventRewardKey, useStatsStore } from "@/store/stats";
 
 interface Attendee {
   name?: string;
@@ -68,6 +90,16 @@ const FLAG_LABELS: Record<string, string> = {
   dopamine: "Dopamin Boost",
 };
 
+type RescheduleOption = "none" | "1h" | "3h" | "1d" | "custom";
+
+const RESCHEDULE_CHOICES: Array<{ value: RescheduleOption; label: string }> = [
+  { value: "none", label: "Nicht verschieben" },
+  { value: "1h", label: "+1 Stunde" },
+  { value: "3h", label: "+3 Stunden" },
+  { value: "1d", label: "Morgen" },
+  { value: "custom", label: "Datum wählen" },
+];
+
 export function EventQuickView({
   isOpen,
   onClose,
@@ -81,6 +113,9 @@ export function EventQuickView({
   const awardEventCompletion = useStatsStore(
     (state) => state.awardEventCompletion
   );
+  const recordEventMissed = useStatsStore((state) => state.recordEventMissed);
+  const awardedEventIds = useStatsStore((state) => state.awardedEventIds);
+  const updateEvent = useCalendarStore((state) => state.updateEvent);
   const getStatusColor = (status: string | undefined) => {
     switch (status?.toUpperCase()) {
       case "ACCEPTED":
@@ -106,36 +141,224 @@ export function EventQuickView({
   const isPreparationReminder = Boolean(
     !isTask && eventItem?.extendedProps?.isPreparationReminder
   );
-  const [hasClaimedReward, setHasClaimedReward] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackText, setFeedbackText] = useState("");
+  const [rescheduleOption, setRescheduleOption] = useState<RescheduleOption>(
+    "none"
+  );
+  const [customReschedule, setCustomReschedule] = useState("");
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
 
   useEffect(() => {
-    setHasClaimedReward(false);
+    setFeedbackOpen(false);
+    setFeedbackText("");
+    setRescheduleOption("none");
+    setCustomReschedule("");
+    setIsSubmittingFeedback(false);
   }, [item]);
 
+  useEffect(() => {
+    if (!feedbackOpen) {
+      setFeedbackText("");
+      setRescheduleOption("none");
+      setCustomReschedule("");
+      setIsSubmittingFeedback(false);
+    }
+  }, [feedbackOpen]);
+
+  const eventRewardKey = useMemo(() => {
+    if (!eventItem) return undefined;
+    return getEventRewardKey(eventItem);
+  }, [eventItem]);
+
+  const hasClaimedReward = Boolean(
+    eventRewardKey && awardedEventIds[eventRewardKey]
+  );
+
+  const eventDurationMinutes = useMemo(() => {
+    if (!eventItem) return 60;
+    const startDate = newDate(eventItem.start);
+    const endDate = eventItem.end
+      ? newDate(eventItem.end)
+      : eventItem.allDay
+        ? addHours(startDate, 24)
+        : addHours(startDate, 1);
+    let duration = Math.round(
+      Math.abs(endDate.getTime() - startDate.getTime()) / 60000
+    );
+    if (!Number.isFinite(duration) || duration <= 0) {
+      duration = eventItem.allDay ? 1440 : 60;
+    }
+    return Math.max(30, duration);
+  }, [eventItem]);
+
+  const handleRescheduleSelection = (option: RescheduleOption) => {
+    setRescheduleOption(option);
+    if (option === "custom" && eventItem) {
+      setCustomReschedule(formatToLocalISOString(newDate(eventItem.start)));
+    }
+  };
+
+  const handleSubmitFeedback = async () => {
+    if (!eventItem) return;
+    setIsSubmittingFeedback(true);
+    try {
+      let rescheduledStart: Date | null = null;
+      if (rescheduleOption === "1h") {
+        rescheduledStart = addHours(newDate(eventItem.start), 1);
+      } else if (rescheduleOption === "3h") {
+        rescheduledStart = addHours(newDate(eventItem.start), 3);
+      } else if (rescheduleOption === "1d") {
+        rescheduledStart = addDays(newDate(eventItem.start), 1);
+      } else if (rescheduleOption === "custom") {
+        if (!customReschedule) {
+          toast.error("Bitte wähle einen neuen Zeitpunkt.");
+          setIsSubmittingFeedback(false);
+          return;
+        }
+        rescheduledStart = newDate(customReschedule);
+      }
+
+      let rescheduledEnd: Date | null = null;
+      if (rescheduledStart) {
+        const duration = eventDurationMinutes;
+        rescheduledEnd = new Date(
+          rescheduledStart.getTime() + duration * 60000
+        );
+        const sourceEventId =
+          eventItem.extendedProps?.sourceEventId ?? eventItem.id;
+        const updates: Partial<CalendarEvent> = {
+          start: rescheduledStart,
+          end: rescheduledEnd,
+        };
+        if (eventItem.allDay) {
+          updates.allDay = true;
+        }
+        await updateEvent(sourceEventId, updates, "single");
+      }
+
+      recordEventMissed(
+        eventItem,
+        feedbackText,
+        rescheduledStart
+      );
+
+      toast.success("Feedback gespeichert", {
+        description: rescheduledStart
+          ? `Termin verschoben auf ${format(
+              rescheduledStart,
+              eventItem.allDay ? "PP" : "PPp"
+            )}.`
+          : "Danke für dein Feedback!",
+      });
+      setFeedbackOpen(false);
+    } catch (error) {
+      console.error("Failed to record event feedback", error);
+      toast.error("Feedback konnte nicht gespeichert werden", {
+        description: "Bitte versuche es erneut.",
+      });
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
+  };
+
   return (
-    <Popover open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <PopoverTrigger asChild>
-        <div
-          className="w-0 h-0 opacity-0 pointer-events-none"
-          style={{
-            position: 'fixed',
-            left: referenceElement ? referenceElement.getBoundingClientRect().left : 0,
-            top: referenceElement ? referenceElement.getBoundingClientRect().top : 0,
-          }}
-        />
-      </PopoverTrigger>
-      <PopoverContent
-        className="z-[10000] w-80 rounded-lg border border-border bg-background p-4 shadow-lg"
-        align="start"
-        sideOffset={24}
-        onOpenAutoFocus={(e) => e.preventDefault()}
-        forceMount
-      >
-        <div className="space-y-3">
-          <div className="flex items-start justify-between gap-2">
-            <h3 className="event-title flex items-center gap-2 font-medium text-foreground">
-              {item.title}
-              {isTask ? (
+    <>
+      <Dialog open={feedbackOpen} onOpenChange={setFeedbackOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Termin nicht geschafft?</DialogTitle>
+            <DialogDescription>
+              Teile kurz dein Feedback und plane bei Bedarf sofort einen neuen
+              Zeitpunkt.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="event-feedback">Feedback</Label>
+              <Textarea
+                id="event-feedback"
+                value={feedbackText}
+                onChange={(event) => setFeedbackText(event.target.value)}
+                placeholder="Was hat dich aufgehalten?"
+                rows={3}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Neu planen</Label>
+              <div className="flex flex-wrap gap-2">
+                {RESCHEDULE_CHOICES.map((choice) => (
+                  <Button
+                    key={choice.value}
+                    type="button"
+                    variant={
+                      rescheduleOption === choice.value ? "default" : "outline"
+                    }
+                    size="sm"
+                    onClick={() => handleRescheduleSelection(choice.value)}
+                  >
+                    {choice.label}
+                  </Button>
+                ))}
+              </div>
+              {rescheduleOption === "custom" && (
+                <Input
+                  type="datetime-local"
+                  value={customReschedule}
+                  onChange={(event) => setCustomReschedule(event.target.value)}
+                />
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setFeedbackOpen(false)}
+              disabled={isSubmittingFeedback}
+            >
+              Abbrechen
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSubmitFeedback}
+              disabled={
+                isSubmittingFeedback ||
+                (rescheduleOption === "custom" && !customReschedule)
+              }
+            >
+              {isSubmittingFeedback ? "Speichern..." : "Feedback senden"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Popover open={isOpen} onOpenChange={(open) => !open && onClose()}>
+        <PopoverTrigger asChild>
+          <div
+            className="w-0 h-0 opacity-0 pointer-events-none"
+            style={{
+              position: "fixed",
+              left: referenceElement
+                ? referenceElement.getBoundingClientRect().left
+                : 0,
+              top: referenceElement
+                ? referenceElement.getBoundingClientRect().top
+                : 0,
+            }}
+          />
+        </PopoverTrigger>
+        <PopoverContent
+          className="z-[10000] w-80 rounded-lg border border-border bg-background p-4 shadow-lg"
+          align="start"
+          sideOffset={24}
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          forceMount
+        >
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-2">
+              <h3 className="event-title flex items-center gap-2 font-medium text-foreground">
+                {item.title}
+                {isTask ? (
                 <>
                   {taskItem?.isRecurring && (
                     <IoRepeat
@@ -186,29 +409,44 @@ export function EventQuickView({
                 </button>
               )}
               {!isTask && eventItem && !isPreparationReminder && (
-                <button
-                  onClick={() => {
-                    if (hasClaimedReward) return;
-                    const summary = awardEventCompletion(eventItem);
-                    showXpToast(summary);
-                    mapEventToSample(eventItem);
-                    setHasClaimedReward(true);
-                  }}
-                  className={cn(
-                    "rounded-md p-1.5",
-                    hasClaimedReward
-                      ? "cursor-not-allowed bg-muted text-muted-foreground"
-                      : "text-muted-foreground hover:bg-muted hover:text-green-600"
-                  )}
-                  title={
-                    hasClaimedReward
-                      ? "Belohnung bereits eingesammelt"
-                      : "Belohnung einsammeln"
-                  }
-                  disabled={hasClaimedReward}
-                >
-                  <HiCheck className="h-4 w-4" />
-                </button>
+                <>
+                  <button
+                    onClick={() => {
+                      const summary = awardEventCompletion(eventItem);
+                      if (!summary) {
+                        toast.info("Belohnung bereits eingesammelt.");
+                        return;
+                      }
+                      showXpToast(summary);
+                      mapEventToSample(eventItem);
+                    }}
+                    className={cn(
+                      "rounded-md p-1.5",
+                      hasClaimedReward
+                        ? "cursor-not-allowed bg-muted text-muted-foreground"
+                        : "text-muted-foreground hover:bg-muted hover:text-green-600"
+                    )}
+                    title={
+                      hasClaimedReward
+                        ? "Belohnung bereits eingesammelt"
+                        : "Belohnung einsammeln"
+                    }
+                    disabled={hasClaimedReward}
+                  >
+                    <HiCheck className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setRescheduleOption("none");
+                      setCustomReschedule("");
+                      setFeedbackOpen(true);
+                    }}
+                    className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    title="Feedback geben"
+                  >
+                    <HiX className="h-4 w-4" />
+                  </button>
+                </>
               )}
               <button
                 onClick={onEdit}
@@ -452,7 +690,8 @@ export function EventQuickView({
             </div>
           )}
         </div>
-      </PopoverContent>
-    </Popover>
+        </PopoverContent>
+      </Popover>
+    </>
   );
 }

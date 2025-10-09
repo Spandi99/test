@@ -27,6 +27,14 @@ import {
 } from "@/types/stats";
 import { CalendarEvent } from "@/types/calendar";
 
+export interface MissedActivityRecord {
+  id: string;
+  label: string;
+  at: string;
+  feedback?: string;
+  rescheduledTo?: string | null;
+}
+
 interface StatsState {
   level: number;
   currentXp: number;
@@ -44,8 +52,13 @@ interface StatsState {
   activeProfileId: string;
   profiles: Record<string, StatsProfile>;
 
-  awardTaskCompletion: (task: Task) => GainSummary;
-  awardEventCompletion: (event: CalendarEvent) => GainSummary;
+  awardedTaskIds: Record<string, string>;
+  awardedEventIds: Record<string, string>;
+  missedTasks: Record<string, MissedActivityRecord>;
+  missedEvents: Record<string, MissedActivityRecord>;
+
+  awardTaskCompletion: (task: Task) => GainSummary | null;
+  awardEventCompletion: (event: CalendarEvent) => GainSummary | null;
   completeDailyActivity: (activityId: string) => GainSummary | null;
   awardManualXp: (
     amount: number,
@@ -59,6 +72,16 @@ interface StatsState {
   finalizeAvatar: (avatarId: string) => void;
   unlockAvatar: (avatarId: string) => void;
   switchProfile: (userId?: string | null) => void;
+  recordTaskMissed: (
+    task: Task,
+    feedback?: string,
+    rescheduledTo?: Date | null
+  ) => void;
+  recordEventMissed: (
+    event: CalendarEvent,
+    feedback?: string,
+    rescheduledTo?: Date | null
+  ) => void;
 }
 
 const INITIAL_STATS: Record<StatKey, number> = {
@@ -86,12 +109,26 @@ type StatsProfile = {
   avatarId: string;
   unlockedAvatarIds: string[];
   avatarFinalized: boolean;
+  awardedTaskIds: Record<string, string>;
+  awardedEventIds: Record<string, string>;
+  missedTasks: Record<string, MissedActivityRecord>;
+  missedEvents: Record<string, MissedActivityRecord>;
 };
 
 const DEFAULT_PROFILE_KEY = "__local__";
 
-function createDefaultProfile(): StatsProfile {
+function ensureProfileDefaults(profile: StatsProfile): StatsProfile {
   return {
+    ...profile,
+    awardedTaskIds: profile.awardedTaskIds ?? {},
+    awardedEventIds: profile.awardedEventIds ?? {},
+    missedTasks: profile.missedTasks ?? {},
+    missedEvents: profile.missedEvents ?? {},
+  };
+}
+
+function createDefaultProfile(): StatsProfile {
+  return ensureProfileDefaults({
     level: 1,
     currentXp: 0,
     xpForNextLevel: getXpForLevel(1),
@@ -105,39 +142,55 @@ function createDefaultProfile(): StatsProfile {
     avatarId: DEFAULT_AVATAR_ID,
     unlockedAvatarIds: [...INITIAL_UNLOCKED_AVATARS],
     avatarFinalized: false,
-  };
+    awardedTaskIds: {},
+    awardedEventIds: {},
+    missedTasks: {},
+    missedEvents: {},
+  });
 }
 
 function cloneProfile(profile: StatsProfile): StatsProfile {
+  const normalized = ensureProfileDefaults(profile);
   return {
-    ...profile,
-    stats: { ...profile.stats },
-    history: profile.history.map((entry) => ({ ...entry })),
+    ...normalized,
+    stats: { ...normalized.stats },
+    history: normalized.history.map((entry) => ({ ...entry })),
     completedDailyActivities: Object.fromEntries(
-      Object.entries(profile.completedDailyActivities).map(([key, value]) => [
-        key,
-        [...value],
-      ])
+      Object.entries(normalized.completedDailyActivities).map(
+        ([key, value]) => [
+          key,
+          [...value],
+        ]
+      )
     ),
-    unlockedAvatarIds: [...profile.unlockedAvatarIds],
+    unlockedAvatarIds: [...normalized.unlockedAvatarIds],
+    awardedTaskIds: { ...normalized.awardedTaskIds },
+    awardedEventIds: { ...normalized.awardedEventIds },
+    missedTasks: { ...normalized.missedTasks },
+    missedEvents: { ...normalized.missedEvents },
   };
 }
 
 function projectProfile(profile: StatsProfile) {
+  const normalized = ensureProfileDefaults(profile);
   return {
-    level: profile.level,
-    currentXp: profile.currentXp,
-    xpForNextLevel: profile.xpForNextLevel,
-    lifetimeXp: profile.lifetimeXp,
-    stats: profile.stats,
-    history: profile.history,
-    completedDailyActivities: profile.completedDailyActivities,
-    lastProgressDate: profile.lastProgressDate,
-    currentStreak: profile.currentStreak,
-    longestStreak: profile.longestStreak,
-    avatarId: profile.avatarId,
-    unlockedAvatarIds: profile.unlockedAvatarIds,
-    avatarFinalized: profile.avatarFinalized,
+    level: normalized.level,
+    currentXp: normalized.currentXp,
+    xpForNextLevel: normalized.xpForNextLevel,
+    lifetimeXp: normalized.lifetimeXp,
+    stats: normalized.stats,
+    history: normalized.history,
+    completedDailyActivities: normalized.completedDailyActivities,
+    lastProgressDate: normalized.lastProgressDate,
+    currentStreak: normalized.currentStreak,
+    longestStreak: normalized.longestStreak,
+    avatarId: normalized.avatarId,
+    unlockedAvatarIds: normalized.unlockedAvatarIds,
+    avatarFinalized: normalized.avatarFinalized,
+    awardedTaskIds: normalized.awardedTaskIds,
+    awardedEventIds: normalized.awardedEventIds,
+    missedTasks: normalized.missedTasks,
+    missedEvents: normalized.missedEvents,
   };
 }
 
@@ -162,6 +215,24 @@ function pruneDailyRecords(
   if (entries.length <= keepDays) return records;
   const trimmed = entries.slice(entries.length - keepDays);
   return Object.fromEntries(trimmed);
+}
+
+function addMissedRecord(
+  records: Record<string, MissedActivityRecord>,
+  record: MissedActivityRecord,
+  limit = 50
+): Record<string, MissedActivityRecord> {
+  const next = { ...records, [record.id]: record };
+  const sorted = Object.values(next).sort((a, b) =>
+    b.at.localeCompare(a.at)
+  );
+  return sorted.slice(0, limit).reduce<Record<string, MissedActivityRecord>>(
+    (acc, entry) => {
+      acc[entry.id] = entry;
+      return acc;
+    },
+    {}
+  );
 }
 
 function calculateTaskXp(task: Task): number {
@@ -312,6 +383,18 @@ function findActivityForToday(
   todayActivities: DailyActivityDefinition[]
 ): DailyActivityDefinition | undefined {
   return todayActivities.find((activity) => activity.id === activityId);
+}
+
+export function getTaskRewardKey(task: Task): string {
+  return task.id;
+}
+
+export function getEventRewardKey(event: CalendarEvent): string {
+  const sourceId = event.extendedProps?.sourceEventId;
+  if (typeof sourceId === "string" && sourceId.trim().length > 0) {
+    return sourceId;
+  }
+  return event.id;
 }
 
 export const useStatsStore = create<StatsState>()(
@@ -465,6 +548,10 @@ export const useStatsStore = create<StatsState>()(
         },
 
         awardTaskCompletion: (task) => {
+          const rewardKey = getTaskRewardKey(task);
+          if (rewardKey && get().awardedTaskIds[rewardKey]) {
+            return null;
+          }
           const statKey = inferStatFromTask(task);
           const statAmount = getStatGainForTask(task);
           const statChanges: StatChange[] = [
@@ -475,16 +562,33 @@ export const useStatsStore = create<StatsState>()(
             statChanges.push(...tagResult.statChanges);
           }
           const xp = calculateTaskXp(task) + tagResult.xpBonus;
-          return recordGain(
+          const summary = recordGain(
             xp,
             task.title,
             "task",
             statChanges,
             tagResult.hypeText
           );
+          mutateActiveProfile((profile) => {
+            profile.awardedTaskIds = {
+              ...profile.awardedTaskIds,
+              [rewardKey]: newDate().toISOString(),
+            };
+            if (profile.missedTasks[rewardKey]) {
+              const updatedMissed = { ...profile.missedTasks };
+              delete updatedMissed[rewardKey];
+              profile.missedTasks = updatedMissed;
+            }
+            return profile;
+          });
+          return summary;
         },
 
         awardEventCompletion: (event) => {
+          const rewardKey = getEventRewardKey(event);
+          if (rewardKey && get().awardedEventIds[rewardKey]) {
+            return null;
+          }
           const start = newDate(event.start);
           const end = event.end ? newDate(event.end) : newDate(event.start);
           let durationMinutes = Math.max(
@@ -518,13 +622,26 @@ export const useStatsStore = create<StatsState>()(
           const xp = baseXp + tagResult.xpBonus;
           const label = event.title || "Kalendereintrag";
 
-          return recordGain(
+          const summary = recordGain(
             xp,
             label,
             "event",
             statChanges,
             tagResult.hypeText
           );
+          mutateActiveProfile((profile) => {
+            profile.awardedEventIds = {
+              ...profile.awardedEventIds,
+              [rewardKey]: newDate().toISOString(),
+            };
+            if (profile.missedEvents[rewardKey]) {
+              const updatedMissed = { ...profile.missedEvents };
+              delete updatedMissed[rewardKey];
+              profile.missedEvents = updatedMissed;
+            }
+            return profile;
+          });
+          return summary;
         },
 
         completeDailyActivity: (activityId) => {
@@ -571,6 +688,48 @@ export const useStatsStore = create<StatsState>()(
             statChanges.push(change);
           }
           return recordGain(amount, label, "manual", statChanges);
+        },
+
+        recordTaskMissed: (task, feedback, rescheduledTo) => {
+          const rewardKey = getTaskRewardKey(task);
+          const timestamp = newDate().toISOString();
+          const trimmedFeedback = feedback?.trim();
+          mutateActiveProfile((profile) => {
+            profile.missedTasks = addMissedRecord(profile.missedTasks, {
+              id: rewardKey,
+              label: task.title,
+              at: timestamp,
+              feedback:
+                trimmedFeedback && trimmedFeedback.length > 0
+                  ? trimmedFeedback
+                  : undefined,
+              rescheduledTo: rescheduledTo
+                ? rescheduledTo.toISOString()
+                : null,
+            });
+            return profile;
+          });
+        },
+
+        recordEventMissed: (event, feedback, rescheduledTo) => {
+          const rewardKey = getEventRewardKey(event);
+          const timestamp = newDate().toISOString();
+          const trimmedFeedback = feedback?.trim();
+          mutateActiveProfile((profile) => {
+            profile.missedEvents = addMissedRecord(profile.missedEvents, {
+              id: rewardKey,
+              label: event.title || "Kalendereintrag",
+              at: timestamp,
+              feedback:
+                trimmedFeedback && trimmedFeedback.length > 0
+                  ? trimmedFeedback
+                  : undefined,
+              rescheduledTo: rescheduledTo
+                ? rescheduledTo.toISOString()
+                : null,
+            });
+            return profile;
+          });
         },
 
         resetDailyCompletion: (date) => {
@@ -646,7 +805,7 @@ export const useStatsStore = create<StatsState>()(
       },
     {
       name: "stats-store",
-      version: 4,
+      version: 5,
       migrate: async (persistedState, version) => {
         if (!persistedState || typeof persistedState !== "object") {
           return persistedState as StatsState;
@@ -658,6 +817,24 @@ export const useStatsStore = create<StatsState>()(
 
         if (version < 3) {
           draft.avatarFinalized = draft.avatarFinalized ?? false;
+        }
+
+        if (version < 5) {
+          draft.awardedTaskIds = draft.awardedTaskIds ?? {};
+          draft.awardedEventIds = draft.awardedEventIds ?? {};
+          draft.missedTasks = draft.missedTasks ?? {};
+          draft.missedEvents = draft.missedEvents ?? {};
+          if (draft.profiles) {
+            Object.entries(draft.profiles).forEach(([key, profile]) => {
+              draft.profiles![key] = ensureProfileDefaults({
+                ...profile,
+                awardedTaskIds: profile.awardedTaskIds ?? {},
+                awardedEventIds: profile.awardedEventIds ?? {},
+                missedTasks: profile.missedTasks ?? {},
+                missedEvents: profile.missedEvents ?? {},
+              });
+            });
+          }
         }
 
         if (!draft.profiles) {

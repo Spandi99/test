@@ -98,8 +98,10 @@ export default function TasksPage() {
       const summary = useStatsStore
         .getState()
         .awardTaskCompletion(updatedTask);
-      showXpToast(summary);
-      mapTaskToSample(updatedTask);
+      if (summary) {
+        showXpToast(summary);
+        mapTaskToSample(updatedTask);
+      }
     }
 
     await fetchTasks();
