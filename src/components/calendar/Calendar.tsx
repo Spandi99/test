@@ -93,19 +93,46 @@ export function Calendar({
     await scheduleAllTasks();
   };
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (window.innerWidth < 640) {
+      setSidebarOpen(false);
+    }
+  }, [setSidebarOpen]);
+
   return (
-    <div className="flex h-full w-full">
+    <div className="relative flex h-full w-full">
+      {isSidebarOpen && (
+        <div
+          role="presentation"
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 z-30 bg-background/80 backdrop-blur-sm sm:hidden"
+        />
+      )}
       {/* Sidebar */}
       <aside
         className={cn(
-          "h-full w-80 flex-none border-r border-gray-200 bg-white",
-          "transform transition-transform duration-300 ease-in-out",
+          "fixed inset-y-0 left-0 z-40 flex h-full w-full max-w-sm flex-none border-r border-border bg-background",
+          "shadow-lg transition-transform duration-300 ease-in-out sm:relative sm:max-w-none sm:shadow-none",
+          "sm:w-80",
           !isHydrated && "opacity-0 duration-0",
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
         )}
-        style={{ marginLeft: isSidebarOpen ? 0 : "-20rem" }}
+        style={{ marginLeft: isSidebarOpen ? undefined : "-20rem" }}
       >
         <div className="flex h-full flex-col">
+          <div className="flex items-center justify-between border-b border-border px-4 py-3 sm:hidden">
+            <h2 className="text-sm font-medium text-foreground">Kalender</h2>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="rounded-lg px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/10"
+            >
+              Zurück
+            </button>
+          </div>
           {/* Feed Manager */}
           <div className="flex-1 overflow-y-auto">
             <FeedManager />
@@ -256,16 +283,18 @@ export function Calendar({
         </header>
 
         {/* Calendar Grid */}
-        <div className="flex-1 overflow-hidden">
-          {view === "day" ? (
-            <DayView currentDate={currentDate} onDateClick={setDate} />
-          ) : view === "week" ? (
-            <WeekView currentDate={currentDate} onDateClick={setDate} />
-          ) : view === "month" ? (
-            <MonthView currentDate={currentDate} onDateClick={setDate} />
-          ) : (
-            <MultiMonthView currentDate={currentDate} onDateClick={setDate} />
-          )}
+        <div className="flex-1 overflow-hidden px-3 pb-3 sm:px-6 sm:pb-6">
+          <div className="h-full overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+            {view === "day" ? (
+              <DayView currentDate={currentDate} onDateClick={setDate} />
+            ) : view === "week" ? (
+              <WeekView currentDate={currentDate} onDateClick={setDate} />
+            ) : view === "month" ? (
+              <MonthView currentDate={currentDate} onDateClick={setDate} />
+            ) : (
+              <MultiMonthView currentDate={currentDate} onDateClick={setDate} />
+            )}
+          </div>
         </div>
       </main>
     </div>
