@@ -42,6 +42,7 @@ interface StatsState {
   longestStreak: number;
   avatarId: string;
   unlockedAvatarIds: string[];
+  avatarFinalized: boolean;
 
   awardTaskCompletion: (task: Task) => GainSummary;
   awardEventCompletion: (event: CalendarEvent) => GainSummary;
@@ -55,6 +56,7 @@ interface StatsState {
   adjustStat: (key: StatKey, amount: number) => StatChange;
   resetDailyCompletion: (date?: Date) => void;
   setAvatar: (avatarId: string) => void;
+  finalizeAvatar: (avatarId: string) => void;
   unlockAvatar: (avatarId: string) => void;
 }
 
@@ -342,6 +344,7 @@ export const useStatsStore = create<StatsState>()(
         longestStreak: 0,
         avatarId: DEFAULT_AVATAR_ID,
         unlockedAvatarIds: INITIAL_UNLOCKED_AVATARS,
+        avatarFinalized: false,
 
         adjustStat: (key, amount) => {
           const state = get();
@@ -462,6 +465,9 @@ export const useStatsStore = create<StatsState>()(
         },
 
         setAvatar: (avatarId) => {
+          if (get().avatarFinalized) {
+            return;
+          }
           const exists = AVATAR_PRESETS.some((preset) => preset.id === avatarId);
           if (!exists) return;
           const state = get();
@@ -472,6 +478,16 @@ export const useStatsStore = create<StatsState>()(
             return;
           }
           set({ avatarId });
+        },
+
+        finalizeAvatar: (avatarId) => {
+          const exists = AVATAR_PRESETS.some((preset) => preset.id === avatarId);
+          if (!exists) return;
+          const state = get();
+          if (!state.unlockedAvatarIds.includes(avatarId)) {
+            return;
+          }
+          set({ avatarId, avatarFinalized: true });
         },
 
         unlockAvatar: (avatarId) => {
@@ -489,7 +505,19 @@ export const useStatsStore = create<StatsState>()(
     },
     {
       name: "stats-store",
-      version: 2,
+      version: 3,
+      migrate: async (persistedState, version) => {
+        if (!persistedState || typeof persistedState !== "object") {
+          return persistedState as StatsState;
+        }
+        if (version < 3) {
+          return {
+            avatarFinalized: false,
+            ...persistedState,
+          } as StatsState;
+        }
+        return persistedState as StatsState;
+      },
     }
   )
 );

@@ -121,101 +121,137 @@ export function Calendar({
         {/* Lifetime Access Banner */}
         <LifetimeAccessBanner />
         {/* Header */}
-        <header className="flex h-16 flex-none items-center border-b border-border px-4">
-          <button
-            onClick={() => setSidebarOpen(!isSidebarOpen)}
-            className="rounded-lg p-2 text-foreground hover:bg-muted"
-            title="Toggle Sidebar (b)"
-          >
-            <HiMenu className="h-5 w-5" />
-          </button>
-
-          <div className="ml-4 flex items-center gap-4">
-            <button
-              onClick={() => setDate(newDate())}
-              className="rounded-lg px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted"
-              title="Go to Today (t)"
-            >
-              Today
-            </button>
-
-            <button
-              onClick={handleAutoSchedule}
-              className="rounded-lg px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/10"
-            >
-              Auto Schedule
-            </button>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handlePrevWeek}
-                className="rounded-lg p-1.5 text-foreground hover:bg-muted"
-                data-testid="calendar-prev-week"
-                title="Previous Week (←)"
-              >
-                <IoChevronBack className="h-5 w-5" />
-              </button>
-              <button
-                onClick={handleNextWeek}
-                className="rounded-lg p-1.5 text-foreground hover:bg-muted"
-                data-testid="calendar-next-week"
-                title="Next Week (→)"
-              >
-                <IoChevronForward className="h-5 w-5" />
-              </button>
+        <header className="border-b border-border bg-background/60 px-4 py-4 backdrop-blur supports-[backdrop-filter]:bg-background/40">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:gap-6">
+              <div className="flex items-center justify-between gap-3 sm:justify-start">
+                <button
+                  onClick={() => setSidebarOpen(!isSidebarOpen)}
+                  className="rounded-lg p-2 text-foreground hover:bg-muted"
+                  title="Toggle Sidebar (b)"
+                >
+                  <HiMenu className="h-5 w-5" />
+                </button>
+                <div className="flex flex-col sm:hidden">
+                  <span className="text-xs uppercase tracking-widest text-muted-foreground">
+                    Heute
+                  </span>
+                  <h1 className="text-lg font-semibold text-foreground">
+                    {formatDate(currentDate)}
+                  </h1>
+                </div>
+              </div>
+              <div className="hidden sm:flex sm:flex-col sm:gap-1">
+                <span className="text-xs uppercase tracking-widest text-muted-foreground">
+                  Aktueller Blick
+                </span>
+                <h1 className="text-2xl font-semibold text-foreground">
+                  {formatDate(currentDate)}
+                </h1>
+              </div>
             </div>
 
-            <h1 className="text-xl font-semibold text-foreground">
-              {formatDate(currentDate)}
-            </h1>
-          </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end lg:gap-4">
+              <div className="grid w-full gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end sm:gap-3">
+                <button
+                  onClick={() => setDate(newDate())}
+                  className="w-full rounded-lg px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted sm:w-auto"
+                  title="Go to Today (t)"
+                >
+                  Heute
+                </button>
+                <button
+                  onClick={handleAutoSchedule}
+                  className="w-full rounded-lg px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/10 sm:w-auto"
+                >
+                  Auto-Planung
+                </button>
+                <div className="flex w-full items-center justify-between rounded-lg border border-border px-2 py-1 sm:w-auto sm:justify-end sm:border-none sm:px-0 sm:py-0">
+                  <button
+                    onClick={handlePrevWeek}
+                    className="rounded-lg p-1.5 text-foreground hover:bg-muted"
+                    data-testid="calendar-prev-week"
+                    title="Previous"
+                  >
+                    <IoChevronBack className="h-5 w-5" />
+                  </button>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:hidden">
+                    Zeitraum
+                  </span>
+                  <button
+                    onClick={handleNextWeek}
+                    className="rounded-lg p-1.5 text-foreground hover:bg-muted"
+                    data-testid="calendar-next-week"
+                    title="Next"
+                  >
+                    <IoChevronForward className="h-5 w-5" />
+                  </button>
+                </div>
+              </div>
 
-          {/* View Switching Buttons */}
-          <div className="ml-auto flex items-center gap-2">
-            <button
-              onClick={() => setView("day")}
-              className={cn(
-                "rounded-lg px-3 py-1.5 text-sm font-medium",
-                view === "day"
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              )}
-            >
-              Day
-            </button>
-            <button
-              onClick={() => setView("week")}
-              className={cn(
-                "rounded-lg px-3 py-1.5 text-sm font-medium",
-                view === "week"
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              )}
-            >
-              Week
-            </button>
-            <button
-              onClick={() => setView("month")}
-              className={cn(
-                "rounded-lg px-3 py-1.5 text-sm font-medium",
-                view === "month"
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              )}
-            >
-              Month
-            </button>
-            <button
-              onClick={() => setView("multiMonth")}
-              className={cn(
-                "rounded-lg px-3 py-1.5 text-sm font-medium",
-                view === "multiMonth"
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              )}
-            >
-              Year
-            </button>
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+                <button
+                  onClick={() => setView("day")}
+                  className={cn(
+                    "rounded-lg px-3 py-1.5 text-sm font-medium transition",
+                    "w-full sm:w-auto",
+                    view === "day"
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                >
+                  Tag
+                </button>
+                <button
+                  onClick={() => setView("week")}
+                  className={cn(
+                    "rounded-lg px-3 py-1.5 text-sm font-medium transition",
+                    "w-full sm:w-auto",
+                    view === "week"
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                >
+                  Woche
+                </button>
+                <button
+                  onClick={() => setView("month")}
+                  className={cn(
+                    "rounded-lg px-3 py-1.5 text-sm font-medium transition",
+                    "w-full sm:w-auto",
+                    view === "month"
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                >
+                  Monat
+                </button>
+                <button
+                  onClick={() => setView("multiMonth")}
+                  className={cn(
+                    "rounded-lg px-3 py-1.5 text-sm font-medium transition",
+                    "w-full sm:w-auto",
+                    view === "multiMonth"
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                >
+                  Quartal
+                </button>
+                <button
+                  onClick={() => setView("agenda")}
+                  className={cn(
+                    "rounded-lg px-3 py-1.5 text-sm font-medium transition",
+                    "w-full sm:w-auto",
+                    view === "agenda"
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                >
+                  Agenda
+                </button>
+              </div>
+            </div>
           </div>
         </header>
 

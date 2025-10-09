@@ -185,7 +185,7 @@ export const StatsAvatar = memo(function StatsAvatar({
   const streakLabel = streak > 0 ? `${streak} Tage` : "Bereit für den Start";
 
   return (
-    <div className="relative flex w-full max-w-[15rem] flex-col items-center text-white sm:max-w-[18rem]">
+    <div className="relative flex w-full max-w-[13rem] flex-col items-center text-white sm:max-w-[16rem]">
       <div className="pointer-events-none absolute inset-0 -z-10 flex items-center justify-center">
         <div
           className={cn(
@@ -277,11 +277,11 @@ export const StatsAvatar = memo(function StatsAvatar({
                 {definition.label}
               </span>
             </div>
-            <div className="flex flex-col items-center gap-1">
+            <div className="flex flex-col items-center gap-1 px-2 text-center">
               <h3 className="text-lg font-semibold tracking-wide text-white">
                 {avatar.label}
               </h3>
-              <p className="max-w-[14rem] text-xs text-white/70 sm:max-w-[16rem] sm:text-sm">
+              <p className="max-w-[12rem] text-xs text-white/70 sm:max-w-[14rem] sm:text-sm">
                 {avatar.description}
               </p>
             </div>

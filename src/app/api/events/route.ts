@@ -146,6 +146,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    if (
+      metadata &&
+      (metadata as unknown) !== Prisma.JsonNull &&
+      typeof metadata === "object"
+    ) {
+      (metadata as Prisma.JsonObject).feedType = feed.type;
+    }
+
     // Create event in database
     const event = await prisma.calendarEvent.create({
       data: {
@@ -158,7 +166,17 @@ export async function POST(request: NextRequest) {
         isRecurring: isRecurring || false,
         recurrenceRule,
         allDay: allDay || false,
-        metadata: metadata ?? Prisma.JsonNull,
+        metadata: metadata ?? { feedType: feed.type },
+      },
+      include: {
+        feed: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            type: true,
+          },
+        },
       },
     });
 
@@ -257,6 +275,14 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
+    if (
+      metadata &&
+      (metadata as unknown) !== Prisma.JsonNull &&
+      typeof metadata === "object"
+    ) {
+      (metadata as Prisma.JsonObject).feedType = existingEvent.feed.type;
+    }
+
     const event = await prisma.calendarEvent.update({
       where: { id },
       data: {
@@ -268,7 +294,17 @@ export async function PATCH(request: NextRequest) {
         isRecurring,
         recurrenceRule,
         allDay,
-        metadata: metadata ?? Prisma.JsonNull,
+        metadata: metadata ?? { feedType: existingEvent.feed.type },
+      },
+      include: {
+        feed: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            type: true,
+          },
+        },
       },
     });
 

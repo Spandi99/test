@@ -4,6 +4,7 @@ import type {
   DatesSetArg,
   EventClickArg,
   EventContentArg,
+  EventDropArg,
 } from "@fullcalendar/core";
 import type { DateSelectArg } from "@fullcalendar/core";
 import interactionPlugin from "@fullcalendar/interaction";
@@ -13,7 +14,6 @@ import timeGridPlugin from "@fullcalendar/timegrid";
 import { TaskModal } from "@/components/tasks/TaskModal";
 
 import { useEventModalStore } from "@/lib/commands/groups/calendar";
-import { newDate } from "@/lib/date-utils";
 
 import { useCalendarStore } from "@/store/calendar";
 import { useSettingsStore } from "@/store/settings";
@@ -25,6 +25,8 @@ import { Task, TaskStatus } from "@/types/task";
 import { CalendarEventContent } from "./CalendarEventContent";
 import { EventModal } from "./EventModal";
 import { EventQuickView } from "./EventQuickView";
+import { buildCalendarDisplayEvents } from "./utils/format-events";
+import type { CalendarDisplayEvent } from "./utils/format-events";
 
 interface WeekViewProps {
   currentDate: Date;
@@ -42,20 +44,7 @@ export function WeekView({ currentDate, onDateClick }: WeekViewProps) {
   const [selectedEndDate, setSelectedEndDate] = useState<Date>();
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
-  const [events, setEvents] = useState<
-    Array<{
-      id: string;
-      title: string;
-      start: Date;
-      end: Date;
-      location?: string;
-      backgroundColor: string;
-      borderColor: string;
-      allDay: boolean;
-      classNames: string[];
-      extendedProps?: ExtendedEventProps;
-    }>
-  >([]);
+  const [events, setEvents] = useState<CalendarDisplayEvent[]>([]);
   const calendarRef = useRef<FullCalendar>(null);
   const tasks = useTaskStore((state) => state.tasks);
   const [quickViewItem, setQuickViewItem] = useState<CalendarEvent | Task>();
@@ -68,48 +57,13 @@ export function WeekView({ currentDate, onDateClick }: WeekViewProps) {
     async (arg: DatesSetArg) => {
       // Get all calendar items with current task data
       const items = getAllCalendarItems(arg.start, arg.end);
-      const formattedItems = items
-        .filter((item) => {
-          if (item.feedId === "tasks") return true;
-          const feed = feeds.find((f) => f.id === item.feedId);
-          return feed?.enabled;
-        })
-        .map((item) => ({
-          id: item.id,
-          title: item.title,
-          start: newDate(item.start),
-          end: newDate(item.end),
-          location: item.location,
-          backgroundColor:
-            item.feedId === "tasks"
-              ? item.color || "#4f46e5"
-              : feeds.find((f) => f.id === item.feedId)?.color || "#3b82f6",
-          borderColor:
-            item.feedId === "tasks"
-              ? item.color || "#4f46e5"
-              : feeds.find((f) => f.id === item.feedId)?.color || "#3b82f6",
-          allDay: item.allDay,
-          classNames: [
-            item.extendedProps?.isTask ? "calendar-task" : "calendar-event",
-          ],
-          // Store the original event data
-          extendedProps: {
-            ...item,
-            // Bring important flags to top level of extendedProps for easy access
-            isTask: item.extendedProps?.isTask,
-            isRecurring: item.isRecurring,
-            status: item.extendedProps?.status,
-            priority: item.extendedProps?.priority,
-          },
-        }));
+      const enabledItems = items.filter((item) => {
+        if (item.feedId === "tasks") return true;
+        const feed = feeds.find((f) => f.id === item.feedId);
+        return feed?.enabled;
+      });
 
-      // console.log("Setting formatted calendar items:", {
-      //   total: formattedItems.length,
-      //   tasks: formattedItems.filter((item) => item.extendedProps?.isTask)
-      //     .length,
-      //   events: formattedItems.filter((item) => !item.extendedProps?.isTask)
-      //     .length,
-      // });
+      const formattedItems = buildCalendarDisplayEvents(enabledItems, feeds);
       setEvents(formattedItems);
     },
     [feeds, getAllCalendarItems]
@@ -126,7 +80,6 @@ export function WeekView({ currentDate, onDateClick }: WeekViewProps) {
   // Update items when loading state changes, feeds change, or tasks change
   useEffect(() => {
     if (!isLoading && calendarRef.current) {
-      console.log("Updating calendar items due to dependency change");
       const calendar = calendarRef.current.getApi();
       handleDatesSet({
         start: calendar.view.activeStart,
@@ -152,9 +105,13 @@ export function WeekView({ currentDate, onDateClick }: WeekViewProps) {
   }, [currentDate]);
 
   const handleEventClick = (info: EventClickArg) => {
-    const item = info.event.extendedProps;
+    const item = info.event.extendedProps as ExtendedEventProps & {
+      sourceEventId?: string;
+      isTask?: boolean;
+    };
     const itemId = info.event.id;
     const isTask = item.isTask;
+    const sourceEventId = item.sourceEventId || itemId;
 
     // Store the clicked element for positioning
     setClickedElement(info.el);
@@ -166,9 +123,11 @@ export function WeekView({ currentDate, onDateClick }: WeekViewProps) {
         setIsTask(true);
       }
     } else {
-      const event = useCalendarStore
-        .getState()
-        .events.find((e) => e.id === itemId);
+      const event =
+        useCalendarStore.getState().events.find((e) => e.id === sourceEventId) ??
+        useCalendarStore
+          .getState()
+          .events.find((e) => e.id === itemId);
       setQuickViewItem(event as CalendarEvent);
       setIsTask(false);
     }
@@ -261,6 +220,41 @@ export function WeekView({ currentDate, onDateClick }: WeekViewProps) {
     }
   };
 
+  const handleEventDrop = async (info: EventDropArg) => {
+    const item = info.event.extendedProps as ExtendedEventProps & {
+      sourceEventId?: string;
+      isTask?: boolean;
+    };
+
+    if (item.isTask) {
+      info.revert();
+      return;
+    }
+
+    const sourceEventId = item.sourceEventId || info.event.id;
+    const startDate = info.event.start
+      ? new Date(info.event.start.getTime())
+      : null;
+    const endDate = info.event.end
+      ? new Date(info.event.end.getTime())
+      : startDate;
+
+    if (!startDate || !endDate) {
+      info.revert();
+      return;
+    }
+
+    try {
+      await useCalendarStore
+        .getState()
+        .updateEvent(sourceEventId, { start: startDate, end: endDate }, "single");
+      await useCalendarStore.getState().refreshEvents();
+    } catch (error) {
+      console.error("Failed to move event", error);
+      info.revert();
+    }
+  };
+
   const renderEventContent = useCallback(
     (arg: EventContentArg) => <CalendarEventContent eventInfo={arg} />,
     []
@@ -318,6 +312,10 @@ export function WeekView({ currentDate, onDateClick }: WeekViewProps) {
         select={handleDateSelect}
         selectable={true}
         selectMirror={true}
+        editable
+        eventStartEditable
+        eventDurationEditable
+        eventDrop={handleEventDrop}
         datesSet={handleDatesSet}
         eventContent={renderEventContent}
       />

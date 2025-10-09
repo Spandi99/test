@@ -41,6 +41,8 @@ export default function StatsPage() {
     avatarId,
     unlockedAvatarIds,
     setAvatar,
+    avatarFinalized,
+    finalizeAvatar,
     completeDailyActivity,
   } = useStatsStore((state) => state);
 
@@ -73,6 +75,12 @@ export default function StatsPage() {
     );
   }, [avatarId]);
 
+  const [pendingAvatarId, setPendingAvatarId] = useState<string>(avatarId);
+
+  useEffect(() => {
+    setPendingAvatarId(avatarId);
+  }, [avatarId]);
+
   const handleCompleteActivity = (activityId: string) => {
     const summary = completeDailyActivity(activityId);
     if (summary) {
@@ -81,7 +89,14 @@ export default function StatsPage() {
   };
 
   const handleSelectAvatar = (presetId: string) => {
+    if (avatarFinalized) return;
+    setPendingAvatarId(presetId);
     setAvatar(presetId);
+  };
+
+  const handleConfirmAvatar = () => {
+    if (avatarFinalized) return;
+    finalizeAvatar(pendingAvatarId);
   };
 
   const [isMobile, setIsMobile] = useState(false);
@@ -100,7 +115,7 @@ export default function StatsPage() {
     <div className="relative flex h-full flex-col overflow-y-auto bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.25),_transparent_60%)]" />
       <div className="relative mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 pb-24 pt-8 sm:px-6 lg:px-8">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,420px)_1fr]">
           <Card className="relative overflow-hidden border-white/10 bg-white/5 backdrop-blur">
             <CardHeader className="space-y-3 pb-4">
               <CardTitle className="text-3xl font-bold tracking-wide text-white">
@@ -110,8 +125,8 @@ export default function StatsPage() {
                 Sammle XP, forme deine Werte und halte deine Streak am Leben.
               </p>
             </CardHeader>
-            <CardContent className="grid gap-8 pb-12 xl:grid-cols-[260px_minmax(0,1fr)] xl:items-center">
-              <div className="mx-auto flex max-w-xs justify-center">
+            <CardContent className="grid gap-8 pb-12 xl:grid-cols-[minmax(0,260px)_minmax(0,1fr)] xl:items-center">
+              <div className="mx-auto flex w-full max-w-xs justify-center px-2">
                 <StatsAvatar
                   avatar={activeAvatar}
                   dominantStat={dominantStat}
@@ -143,51 +158,69 @@ export default function StatsPage() {
                     </p>
                   </div>
                 </div>
-                <div className="space-y-3 rounded-2xl border border-white/10 bg-slate-950/50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-300/70">
-                    Avatar Loadout
-                  </p>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {AVATAR_PRESETS.map((preset) => {
-                      const isUnlocked = unlockedAvatarIds.includes(preset.id);
-                      const isActive = preset.id === avatarId;
-                      return (
-                        <button
-                          key={preset.id}
-                          type="button"
-                          onClick={() => handleSelectAvatar(preset.id)}
-                          disabled={!isUnlocked}
-                          className={cn(
-                            "group flex flex-col items-start gap-3 rounded-xl border border-white/10 bg-white/5 p-3 text-left transition sm:flex-row sm:items-center",
-                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400",
-                            isActive && "border-sky-300/70 bg-sky-500/10 shadow-lg",
-                            !isUnlocked && "cursor-not-allowed opacity-50"
-                          )}
-                        >
-                          <div
+                {!avatarFinalized ? (
+                  <div className="space-y-3 rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                    <div className="flex flex-col gap-1 text-slate-200/80">
+                      <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-300/80">
+                        Avatar Auswahl
+                      </p>
+                      <p className="text-xs">
+                        Wähle deinen Helden mit Bedacht – nach der Bestätigung bleibt er an deiner Seite.
+                      </p>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {AVATAR_PRESETS.map((preset) => {
+                        const isUnlocked = unlockedAvatarIds.includes(preset.id);
+                        const isActive = preset.id === pendingAvatarId;
+                        return (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            onClick={() => handleSelectAvatar(preset.id)}
+                            disabled={!isUnlocked}
                             className={cn(
-                              "flex h-10 w-10 items-center justify-center rounded-xl border border-white/20 bg-gradient-to-br text-lg text-white sm:h-12 sm:w-12 sm:text-xl",
-                              preset.layers.background
+                              "group flex flex-col items-start gap-3 rounded-xl border border-white/10 bg-white/5 p-3 text-left transition sm:flex-row sm:items-center",
+                              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400",
+                              isActive && "border-sky-300/70 bg-sky-500/10 shadow-lg",
+                              !isUnlocked && "cursor-not-allowed opacity-50"
                             )}
                           >
-                            <span aria-hidden>{STAT_DEFINITIONS[dominantStat].emoji}</span>
-                          </div>
-                          <div className="flex flex-1 flex-col text-sm sm:text-base">
-                            <span className="text-sm font-semibold text-white">
-                              {preset.label}
-                            </span>
-                            <span className="text-xs text-slate-200/80">
-                              {preset.description}
-                            </span>
-                          </div>
-                          {isActive && (
-                            <span className="text-xs text-sky-300">Aktiv</span>
-                          )}
-                        </button>
-                      );
-                    })}
+                            <div
+                              className={cn(
+                                "flex h-10 w-10 items-center justify-center rounded-xl border border-white/20 bg-gradient-to-br text-lg text-white sm:h-12 sm:w-12 sm:text-xl",
+                                preset.layers.background
+                              )}
+                            >
+                              <span aria-hidden>{STAT_DEFINITIONS[dominantStat].emoji}</span>
+                            </div>
+                            <div className="flex flex-1 flex-col text-sm sm:text-base">
+                              <span className="text-sm font-semibold text-white">
+                                {preset.label}
+                              </span>
+                              <span className="text-xs text-slate-200/80">
+                                {preset.description}
+                              </span>
+                            </div>
+                            {isActive && (
+                              <span className="text-xs text-sky-300">Gewählt</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleConfirmAvatar}
+                      className="w-full rounded-xl bg-sky-500/20 px-4 py-2 text-sm font-semibold text-sky-200 transition hover:bg-sky-500/30"
+                    >
+                      Avatar festlegen
+                    </button>
                   </div>
-                </div>
+                ) : (
+                  <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-sm text-emerald-100">
+                    Dein Avatar ist festgelegt – sammle XP, um sein Vermächtnis zu stärken!
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

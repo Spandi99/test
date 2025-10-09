@@ -3,13 +3,7 @@ import { v4 as uuidv4 } from "uuid";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-import {
-  addMinutes,
-  areIntervalsOverlapping,
-  newDate,
-  normalizeAllDayDate,
-  subDays,
-} from "@/lib/date-utils";
+import { addMinutes, newDate, normalizeAllDayDate, subDays } from "@/lib/date-utils";
 import { DEFAULT_TASK_COLOR } from "@/lib/task-utils";
 
 import { useTaskStore } from "@/store/task";
@@ -33,9 +27,17 @@ const PRACTICUM_PATTERNS = [
   /werkstudent/i,
 ];
 
+const UNI_FALLBACK_TAG: CalendarEventTag = {
+  id: "auto-uni",
+  name: "Uni",
+  color: "#0ea5e9",
+};
+
 function normalizeEventTags(event: CalendarEvent): CalendarEvent {
-  const rawTags = Array.isArray(event.metadata?.tags)
-    ? (event.metadata?.tags as CalendarEventTag[])
+  const baseMetadata = (event.metadata as CalendarEventMetadata | null) ?? {};
+
+  const rawTags = Array.isArray(baseMetadata.tags)
+    ? (baseMetadata.tags as CalendarEventTag[])
     : [];
   const tags: CalendarEventTag[] = rawTags.map((tag) => ({
     id: tag.id,
@@ -43,10 +45,20 @@ function normalizeEventTags(event: CalendarEvent): CalendarEvent {
     color: tag.color ?? undefined,
   }));
 
-  const baseMetadata = (event.metadata as CalendarEventMetadata | null) ?? {};
   const normalizedFlags: EventFlag[] = Array.isArray(baseMetadata.flags)
     ? (baseMetadata.flags.filter(Boolean) as EventFlag[])
     : [];
+
+  const feedType = event.feed?.type ?? baseMetadata.feedType;
+  const feedName = event.feed?.name?.toLowerCase() ?? "";
+  const shouldApplyUniFallback =
+    tags.length === 0 &&
+    (feedType === "CALDAV" || feedName.includes("uni") ||
+      baseMetadata.progressionTagId === "uni");
+
+  if (shouldApplyUniFallback) {
+    tags.push({ ...UNI_FALLBACK_TAG });
+  }
 
   const metadata: CalendarEventMetadata = {
     ...baseMetadata,
@@ -54,56 +66,36 @@ function normalizeEventTags(event: CalendarEvent): CalendarEvent {
     flags:
       normalizedFlags.length > 0
         ? normalizedFlags
-        : event.feed?.type === "CALDAV"
+        : feedType === "CALDAV"
           ? ["fixed"]
           : [],
-    feedType: event.feed?.type ?? baseMetadata.feedType,
+    feedType,
+    progressionTagId: shouldApplyUniFallback
+      ? baseMetadata.progressionTagId ?? "uni"
+      : baseMetadata.progressionTagId,
+    statKey:
+      shouldApplyUniFallback && !baseMetadata.statKey
+        ? "focus"
+        : baseMetadata.statKey,
   };
+
+  const primaryColor = tags[0]?.color;
 
   return {
     ...event,
+    color: primaryColor ?? event.color,
     metadata,
     tagIds: tags.map((tag) => tag.id).filter(Boolean) as string[],
     extendedProps: {
       ...event.extendedProps,
       tags,
+      sourceEventId: event.extendedProps?.sourceEventId ?? event.id,
     },
   };
 }
 
 function filterConditionalBlocks(events: CalendarEvent[]): CalendarEvent[] {
-  const fixedBlocks = events.filter((event) => {
-    const flags = (event.metadata?.flags as EventFlag[] | undefined) ?? [];
-    if (flags.includes("fixed")) {
-      return true;
-    }
-    return (
-      event.metadata?.feedType === "CALDAV" ||
-      event.metadata?.progressionTagId === "uni"
-    );
-  });
-
-  return events.filter((event) => {
-    const flags = (event.metadata?.flags as EventFlag[] | undefined) ?? [];
-    if (!flags.includes("conditional-learning")) {
-      return true;
-    }
-
-    return !fixedBlocks.some((fixed) => {
-      if (fixed.id === event.id) return false;
-      const overlaps = areIntervalsOverlapping(
-        { start: newDate(event.start), end: newDate(event.end) },
-        { start: newDate(fixed.start), end: newDate(fixed.end) }
-      );
-      if (!overlaps) return false;
-
-      return (
-        fixed.metadata?.feedType === "CALDAV" ||
-        fixed.metadata?.progressionTagId === "uni" ||
-        (fixed.metadata?.flags as EventFlag[] | undefined)?.includes("fixed")
-      );
-    });
-  });
+  return events;
 }
 
 function shouldCreatePracticumReminder(event: CalendarEvent): boolean {
@@ -651,6 +643,24 @@ export const useCalendarStore = create<CalendarStore>()((set, get) => ({
         return;
       }
 
+      if (feed.type === "LOCAL") {
+        const response = await fetch("/api/events", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(newEvent),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Failed to add local event: ${errorText}`);
+        }
+
+        await get().loadFromDatabase();
+        const { triggerScheduleAllTasks } = useTaskStore.getState();
+        await triggerScheduleAllTasks();
+        return;
+      }
+
       // For other calendars, throw an error
       throw new Error("Unsupported calendar type");
     } catch (error) {
@@ -723,6 +733,24 @@ export const useCalendarStore = create<CalendarStore>()((set, get) => ({
         // Reload from database to get the latest state
         await get().loadFromDatabase();
         // Trigger auto-scheduling after event is created
+        const { triggerScheduleAllTasks } = useTaskStore.getState();
+        await triggerScheduleAllTasks();
+        return;
+      }
+
+      if (feed.type === "LOCAL") {
+        const response = await fetch(`/api/events`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, mode, ...updates }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Failed to update local event: ${errorText}`);
+        }
+
+        await get().loadFromDatabase();
         const { triggerScheduleAllTasks } = useTaskStore.getState();
         await triggerScheduleAllTasks();
         return;
@@ -903,7 +931,7 @@ export const useCalendarStore = create<CalendarStore>()((set, get) => ({
   },
 
   setFeeds: (feeds) => set({ feeds }),
-  setEvents: (events) => set({ events }),
+  setEvents: (events) => set({ events: prepareEventsForStore(events) }),
   setIsLoading: (isLoading) => set({ isLoading }),
   setError: (error) => set({ error }),
   setSelectedDate: (date: Date) => set({ selectedDate: date }),
