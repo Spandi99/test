@@ -160,7 +160,11 @@ export async function PATCH(
         ? newDate(updates.end)
         : newDate(existingEvent.end ?? existingEvent.start);
 
-    if (metadataInput && hasConditionalLearningFlag(metadataInput)) {
+    const shouldSplit = hasConditionalLearningFlag(
+      metadataInput ?? metadataPayload ?? existingMetadata
+    );
+
+    if (shouldSplit) {
       const created = await prisma.$transaction(async (tx) => {
         const events = await createConditionalLearningEvents({
           prisma: tx,

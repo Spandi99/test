@@ -163,7 +163,9 @@ export async function POST(request: NextRequest) {
     const startDate = newDate(start);
     const endDate = newDate(end);
 
-    const shouldSplit = hasConditionalLearningFlag(metadataInput);
+    const shouldSplit = hasConditionalLearningFlag(
+      metadataInput ?? metadataPayload ?? undefined
+    );
 
     if (shouldSplit) {
       const created = await prisma.$transaction((tx) =>
@@ -294,11 +296,23 @@ export async function PATCH(request: NextRequest) {
 
     await ensureTagProgressionSchema();
 
+    const requestedTagIds = Array.isArray(tagIds)
+      ? tagIds
+      : Array.isArray(metadataInput?.tags)
+        ? metadataInput?.tags
+            .map((tag) =>
+              typeof tag === "object" && tag !== null && "id" in tag
+                ? String(tag.id)
+                : undefined
+            )
+            .filter((tagId): tagId is string => Boolean(tagId))
+        : undefined;
+
     let tags: CalendarTagMetadata[] | undefined;
-    if (Array.isArray(tagIds) && tagIds.length > 0) {
+    if (requestedTagIds && requestedTagIds.length > 0) {
       tags = await prisma.tag.findMany({
         where: {
-          id: { in: tagIds },
+          id: { in: requestedTagIds },
           userId,
         },
         select: {
@@ -326,7 +340,11 @@ export async function PATCH(request: NextRequest) {
       ? newDate(end)
       : newDate(existingEvent.end ?? existingEvent.start);
 
-    if (metadataInput && hasConditionalLearningFlag(metadataInput)) {
+    const shouldSplit = hasConditionalLearningFlag(
+      metadataInput ?? metadataPayload ?? existingMetadata
+    );
+
+    if (shouldSplit) {
       const created = await prisma.$transaction(async (tx) => {
         const events = await createConditionalLearningEvents({
           prisma: tx,
