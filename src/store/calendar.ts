@@ -50,11 +50,10 @@ function normalizeEventTags(event: CalendarEvent): CalendarEvent {
     : [];
 
   const feedType = event.feed?.type ?? baseMetadata.feedType;
-  const feedName = event.feed?.name?.toLowerCase() ?? "";
+  const feedName = (event.feed?.name ?? "").trim().toLowerCase();
   const shouldApplyUniFallback =
     tags.length === 0 &&
-    (feedType === "CALDAV" || feedName.includes("uni") ||
-      baseMetadata.progressionTagId === "uni");
+    (feedName === "uni" || baseMetadata.progressionTagId === "uni");
 
   if (shouldApplyUniFallback) {
     tags.push({ ...UNI_FALLBACK_TAG });
@@ -153,6 +152,24 @@ function createPracticumReminder(event: CalendarEvent): CalendarEvent | null {
   };
 }
 
+function extractPayloadEvents(payload: unknown): CalendarEvent[] {
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+
+  const data = payload as { event?: CalendarEvent; events?: CalendarEvent[] };
+
+  if (Array.isArray(data.events)) {
+    return data.events as CalendarEvent[];
+  }
+
+  if (data.event) {
+    return [data.event as CalendarEvent];
+  }
+
+  return [];
+}
+
 function prepareEventsForStore(events: CalendarEvent[]): CalendarEvent[] {
   const normalized = events.map((event) => normalizeEventTags(event));
   const conditioned = filterConditionalBlocks(normalized);
@@ -164,6 +181,59 @@ function prepareEventsForStore(events: CalendarEvent[]): CalendarEvent[] {
   const uniqueExtras = extras.filter((event) => !seen.has(event.id));
 
   return [...conditioned, ...uniqueExtras];
+}
+
+function getSourceEventId(event: CalendarEvent): string {
+  const sourceId = event.extendedProps?.sourceEventId;
+  if (typeof sourceId === "string" && sourceId.length > 0) {
+    return sourceId;
+  }
+  return event.id;
+}
+
+function mergeReplacementEvents(
+  existing: CalendarEvent[],
+  replacements: CalendarEvent[],
+  targetId?: string
+): CalendarEvent[] {
+  if (replacements.length === 0) {
+    return existing;
+  }
+
+  const removalSources = new Set<string>();
+  if (targetId) {
+    removalSources.add(targetId);
+  }
+
+  replacements.forEach((event) => {
+    removalSources.add(getSourceEventId(event));
+  });
+
+  const filtered = existing.filter((event) => {
+    const sourceId = getSourceEventId(event);
+    if (removalSources.has(event.id)) {
+      return false;
+    }
+    if (removalSources.has(sourceId)) {
+      return false;
+    }
+    return true;
+  });
+
+  return [...filtered, ...replacements];
+}
+
+function pruneEventsBySource(
+  events: CalendarEvent[],
+  targetId: string
+): CalendarEvent[] {
+  return events.filter((event) => {
+    if (event.id === targetId) {
+      return false;
+    }
+    const sourceId = getSourceEventId(event);
+    return sourceId !== targetId;
+  });
 }
 
 // Separate store for view preferences that will be persisted in localStorage
@@ -643,23 +713,39 @@ export const useCalendarStore = create<CalendarStore>()((set, get) => ({
         return;
       }
 
-      if (feed.type === "LOCAL") {
-        const response = await fetch("/api/events", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(newEvent),
-        });
+        if (feed.type === "LOCAL") {
+          const response = await fetch("/api/events", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(newEvent),
+          });
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`Failed to add local event: ${errorText}`);
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to add local event: ${errorText}`);
+          }
+
+          let payload: unknown = null;
+          try {
+            payload = await response.json();
+          } catch {
+            payload = null;
+          }
+
+          const createdRaw = extractPayloadEvents(payload);
+          if (createdRaw.length > 0) {
+            const created = prepareEventsForStore(createdRaw);
+            set((state) => ({
+              events: mergeReplacementEvents(state.events, created),
+            }));
+          } else {
+            await get().loadFromDatabase();
+          }
+
+          const { triggerScheduleAllTasks } = useTaskStore.getState();
+          await triggerScheduleAllTasks();
+          return;
         }
-
-        await get().loadFromDatabase();
-        const { triggerScheduleAllTasks } = useTaskStore.getState();
-        await triggerScheduleAllTasks();
-        return;
-      }
 
       // For other calendars, throw an error
       throw new Error("Unsupported calendar type");
@@ -738,23 +824,39 @@ export const useCalendarStore = create<CalendarStore>()((set, get) => ({
         return;
       }
 
-      if (feed.type === "LOCAL") {
-        const response = await fetch(`/api/events`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id, mode, ...updates }),
-        });
+        if (feed.type === "LOCAL") {
+          const response = await fetch(`/api/events`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id, mode, ...updates }),
+          });
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`Failed to update local event: ${errorText}`);
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to update local event: ${errorText}`);
+          }
+
+          let payload: unknown = null;
+          try {
+            payload = await response.json();
+          } catch {
+            payload = null;
+          }
+
+          const updatedRaw = extractPayloadEvents(payload);
+          if (updatedRaw.length > 0) {
+            const updatedEvents = prepareEventsForStore(updatedRaw);
+            set((state) => ({
+              events: mergeReplacementEvents(state.events, updatedEvents, id),
+            }));
+          } else {
+            await get().loadFromDatabase();
+          }
+
+          const { triggerScheduleAllTasks } = useTaskStore.getState();
+          await triggerScheduleAllTasks();
+          return;
         }
-
-        await get().loadFromDatabase();
-        const { triggerScheduleAllTasks } = useTaskStore.getState();
-        await triggerScheduleAllTasks();
-        return;
-      }
 
       // For other calendars, throw an error
       throw new Error("Unsupported calendar type");
@@ -805,22 +907,36 @@ export const useCalendarStore = create<CalendarStore>()((set, get) => ({
         if (!response.ok) {
           throw new Error("Failed to delete event from CalDAV Calendar");
         }
-      } else {
-        // For other calendars, use the existing API
-        const response = await fetch(`/api/events/${id}`, {
-          method: "DELETE",
-        });
+        } else if (feed.type === "LOCAL") {
+          const response = await fetch(`/api/events/${id}`, {
+            method: "DELETE",
+          });
 
-        if (!response.ok) {
-          throw new Error("Failed to delete event from database");
+          if (!response.ok) {
+            throw new Error("Failed to delete event from database");
+          }
+
+          set((state) => ({
+            events: pruneEventsBySource(state.events, id),
+          }));
+        } else {
+          // For any other calendars, use the existing API
+          const response = await fetch(`/api/events/${id}`, {
+            method: "DELETE",
+          });
+
+          if (!response.ok) {
+            throw new Error("Failed to delete event from database");
+          }
         }
-      }
 
-      // Reload from database to get the latest state
-      await get().loadFromDatabase();
-      // Trigger auto-scheduling after event is created
-      const { triggerScheduleAllTasks } = useTaskStore.getState();
-      await triggerScheduleAllTasks();
+        if (feed.type !== "LOCAL") {
+          await get().loadFromDatabase();
+        }
+
+        // Trigger auto-scheduling after event is created
+        const { triggerScheduleAllTasks } = useTaskStore.getState();
+        await triggerScheduleAllTasks();
     } catch (error) {
       console.error("Failed to remove event:", error);
       throw error;

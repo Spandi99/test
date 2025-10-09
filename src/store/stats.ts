@@ -3,22 +3,20 @@ import { persist } from "zustand/middleware";
 
 import {
   AVATAR_PRESETS,
-  BASE_EVENT_XP,
-  BASE_TASK_XP,
   DAILY_ACTIVITIES,
   EVENT_XP_PER_HOUR,
-  MAX_EVENT_XP_BONUS,
-  MAX_TASK_XP_BONUS,
+  MIN_EVENT_XP,
+  MIN_TASK_XP,
   TAG_BONUS_DEFINITIONS,
   TASK_KEYWORD_MAP,
-  XP_PER_ESTIMATED_MINUTE,
+  TASK_XP_PER_HOUR,
   getWeekdayKey,
   getXpForLevel,
 } from "@/lib/stats-config";
 import { getProgressionTag } from "@/lib/progression-tags";
 import { newDate } from "@/lib/date-utils";
 
-import { EnergyLevel, Priority, Task } from "@/types/task";
+import { EnergyLevel, Task } from "@/types/task";
 import {
   DailyActivityDefinition,
   GainSummary,
@@ -43,6 +41,8 @@ interface StatsState {
   avatarId: string;
   unlockedAvatarIds: string[];
   avatarFinalized: boolean;
+  activeProfileId: string;
+  profiles: Record<string, StatsProfile>;
 
   awardTaskCompletion: (task: Task) => GainSummary;
   awardEventCompletion: (event: CalendarEvent) => GainSummary;
@@ -58,6 +58,7 @@ interface StatsState {
   setAvatar: (avatarId: string) => void;
   finalizeAvatar: (avatarId: string) => void;
   unlockAvatar: (avatarId: string) => void;
+  switchProfile: (userId?: string | null) => void;
 }
 
 const INITIAL_STATS: Record<StatKey, number> = {
@@ -70,6 +71,75 @@ const INITIAL_STATS: Record<StatKey, number> = {
 
 const DEFAULT_AVATAR_ID = AVATAR_PRESETS[0]?.id ?? "trailblazer";
 const INITIAL_UNLOCKED_AVATARS = AVATAR_PRESETS.map((preset) => preset.id);
+
+type StatsProfile = {
+  level: number;
+  currentXp: number;
+  xpForNextLevel: number;
+  lifetimeXp: number;
+  stats: Record<StatKey, number>;
+  history: StatsEvent[];
+  completedDailyActivities: Record<string, string[]>;
+  lastProgressDate?: string;
+  currentStreak: number;
+  longestStreak: number;
+  avatarId: string;
+  unlockedAvatarIds: string[];
+  avatarFinalized: boolean;
+};
+
+const DEFAULT_PROFILE_KEY = "__local__";
+
+function createDefaultProfile(): StatsProfile {
+  return {
+    level: 1,
+    currentXp: 0,
+    xpForNextLevel: getXpForLevel(1),
+    lifetimeXp: 0,
+    stats: { ...INITIAL_STATS },
+    history: [],
+    completedDailyActivities: {},
+    lastProgressDate: undefined,
+    currentStreak: 0,
+    longestStreak: 0,
+    avatarId: DEFAULT_AVATAR_ID,
+    unlockedAvatarIds: [...INITIAL_UNLOCKED_AVATARS],
+    avatarFinalized: false,
+  };
+}
+
+function cloneProfile(profile: StatsProfile): StatsProfile {
+  return {
+    ...profile,
+    stats: { ...profile.stats },
+    history: profile.history.map((entry) => ({ ...entry })),
+    completedDailyActivities: Object.fromEntries(
+      Object.entries(profile.completedDailyActivities).map(([key, value]) => [
+        key,
+        [...value],
+      ])
+    ),
+    unlockedAvatarIds: [...profile.unlockedAvatarIds],
+  };
+}
+
+function projectProfile(profile: StatsProfile) {
+  return {
+    level: profile.level,
+    currentXp: profile.currentXp,
+    xpForNextLevel: profile.xpForNextLevel,
+    lifetimeXp: profile.lifetimeXp,
+    stats: profile.stats,
+    history: profile.history,
+    completedDailyActivities: profile.completedDailyActivities,
+    lastProgressDate: profile.lastProgressDate,
+    currentStreak: profile.currentStreak,
+    longestStreak: profile.longestStreak,
+    avatarId: profile.avatarId,
+    unlockedAvatarIds: profile.unlockedAvatarIds,
+    avatarFinalized: profile.avatarFinalized,
+  };
+}
 
 function generateId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -95,14 +165,27 @@ function pruneDailyRecords(
 }
 
 function calculateTaskXp(task: Task): number {
-  const durationMinutes = task.duration ?? 0;
-  const durationBonus = Math.min(
-    MAX_TASK_XP_BONUS,
-    Math.round(durationMinutes * XP_PER_ESTIMATED_MINUTE)
-  );
-  const priorityBonus = task.priority === Priority.HIGH ? 15 : 0;
-  const statusBonus = task.energyLevel === EnergyLevel.HIGH ? 10 : 0;
-  return BASE_TASK_XP + durationBonus + priorityBonus + statusBonus;
+  const scheduledStart = task.scheduledStart
+    ? newDate(task.scheduledStart)
+    : null;
+  const scheduledEnd = task.scheduledEnd ? newDate(task.scheduledEnd) : null;
+  let durationMinutes = 0;
+
+  if (scheduledStart && scheduledEnd) {
+    durationMinutes = Math.round(
+      Math.abs(scheduledEnd.getTime() - scheduledStart.getTime()) / 60000
+    );
+  } else if (typeof task.duration === "number") {
+    durationMinutes = task.duration;
+  }
+
+  if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) {
+    durationMinutes = 30;
+  }
+
+  const normalizedMinutes = Math.max(30, durationMinutes);
+  const xp = Math.round((normalizedMinutes / 60) * TASK_XP_PER_HOUR);
+  return Math.max(MIN_TASK_XP, xp);
 }
 
 function inferStatFromContent(content: string): StatKey | null {
@@ -234,6 +317,21 @@ function findActivityForToday(
 export const useStatsStore = create<StatsState>()(
   persist(
     (set, get) => {
+      const mutateActiveProfile = (
+        mutator: (profile: StatsProfile) => StatsProfile
+      ) => {
+        const key = get().activeProfileId ?? DEFAULT_PROFILE_KEY;
+        const profiles = get().profiles;
+        const current = profiles[key] ?? createDefaultProfile();
+        const nextProfile = mutator(cloneProfile(current));
+        set((state) => ({
+          activeProfileId: key,
+          profiles: { ...state.profiles, [key]: nextProfile },
+          ...projectProfile(nextProfile),
+        }));
+        return nextProfile;
+      };
+
       const recordGain = (
         amount: number,
         label: string,
@@ -241,122 +339,129 @@ export const useStatsStore = create<StatsState>()(
         statChanges: StatChange[] = [],
         hypeText?: string
       ): GainSummary => {
-        const state = get();
-        const timestamp = newDate().toISOString();
-        const previousLevel = state.level;
-        const previousXp = state.currentXp;
+        let summary: GainSummary | undefined;
+        mutateActiveProfile((profile) => {
+          const timestamp = newDate().toISOString();
+          const previousLevel = profile.level;
+          const previousXp = profile.currentXp;
 
-        let xpPool = state.currentXp + amount;
-        let level = state.level;
-        let xpForNext = state.xpForNextLevel;
-        let leveledUp = false;
+          let xpPool = profile.currentXp + amount;
+          let level = profile.level;
+          let xpForNext = profile.xpForNextLevel;
+          let leveledUp = false;
 
-        while (xpPool >= xpForNext) {
-          xpPool -= xpForNext;
-          level += 1;
-          xpForNext = getXpForLevel(level);
-          leveledUp = true;
-        }
+          while (xpPool >= xpForNext) {
+            xpPool -= xpForNext;
+            level += 1;
+            xpForNext = getXpForLevel(level);
+            leveledUp = true;
+          }
 
-        const dateKey = timestamp.split("T")[0];
-        let currentStreak = state.currentStreak;
+          const dateKey = timestamp.split("T")[0];
+          let currentStreak = profile.currentStreak;
 
-        if (!state.lastProgressDate) {
-          currentStreak = 1;
-        } else if (state.lastProgressDate === dateKey) {
-          currentStreak = Math.max(state.currentStreak, 1);
-        } else {
-          const last = new Date(state.lastProgressDate);
-          const current = new Date(dateKey);
-          const diff = Math.round(
-            (current.getTime() - last.getTime()) / (1000 * 60 * 60 * 24)
-          );
-
-          if (diff === 1) {
-            currentStreak = state.currentStreak + 1;
-          } else if (diff <= 0) {
-            currentStreak = Math.max(state.currentStreak, 1);
-          } else {
+          if (!profile.lastProgressDate) {
             currentStreak = 1;
+          } else if (profile.lastProgressDate === dateKey) {
+            currentStreak = Math.max(profile.currentStreak, 1);
+          } else {
+            const last = new Date(profile.lastProgressDate);
+            const current = new Date(dateKey);
+            const diff = Math.round(
+              (current.getTime() - last.getTime()) / (1000 * 60 * 60 * 24)
+            );
+
+            if (diff === 1) {
+              currentStreak = profile.currentStreak + 1;
+            } else if (diff <= 0) {
+              currentStreak = Math.max(profile.currentStreak, 1);
+            } else {
+              currentStreak = 1;
+            }
           }
-        }
 
-        const longestStreak = Math.max(state.longestStreak, currentStreak);
+          const longestStreak = Math.max(profile.longestStreak, currentStreak);
 
-        const summary: GainSummary = {
-          source,
-          label,
-          xpAwarded: amount,
-          previousLevel,
-          newLevel: level,
-          previousXp,
-          newXp: xpPool,
-          xpForNextLevel: xpForNext,
-          leveledUp,
-          statChanges,
-          timestamp,
-          hypeText,
-        };
+          summary = {
+            source,
+            label,
+            xpAwarded: amount,
+            previousLevel,
+            newLevel: level,
+            previousXp,
+            newXp: xpPool,
+            xpForNextLevel: xpForNext,
+            leveledUp,
+            statChanges,
+            timestamp,
+            hypeText,
+          };
 
-        const historyEntry: StatsEvent = {
-          ...summary,
-          id: generateId(),
-        };
+          const historyEntry: StatsEvent = {
+            ...summary,
+            id: generateId(),
+          };
 
-        const updatedUnlocked = new Set(state.unlockedAvatarIds);
-        if (leveledUp) {
-          if (level >= 3) {
-            updatedUnlocked.add("focus-prodigy");
+          const updatedUnlocked = new Set(profile.unlockedAvatarIds);
+          if (leveledUp) {
+            if (level >= 3) {
+              updatedUnlocked.add("focus-prodigy");
+            }
+            if (level >= 6) {
+              updatedUnlocked.add("creative-spark");
+            }
+            if (level >= 9) {
+              updatedUnlocked.add("night-owl");
+            }
           }
-          if (level >= 6) {
-            updatedUnlocked.add("creative-spark");
-          }
-          if (level >= 9) {
-            updatedUnlocked.add("night-owl");
-          }
-        }
 
-        set({
-          level,
-          currentXp: xpPool,
-          xpForNextLevel: xpForNext,
-          lifetimeXp: state.lifetimeXp + amount,
-          history: [historyEntry, ...state.history].slice(0, 60),
-          lastProgressDate: dateKey,
-          currentStreak,
-          longestStreak,
-          unlockedAvatarIds: Array.from(updatedUnlocked),
+          profile.level = level;
+          profile.currentXp = xpPool;
+          profile.xpForNextLevel = xpForNext;
+          profile.lifetimeXp += amount;
+          profile.history = [historyEntry, ...profile.history].slice(0, 60);
+          profile.lastProgressDate = dateKey;
+          profile.currentStreak = currentStreak;
+          profile.longestStreak = longestStreak;
+          profile.unlockedAvatarIds = Array.from(updatedUnlocked);
+
+          return profile;
         });
 
-        return summary;
+        return summary!;
       };
 
+      const initialProfile = createDefaultProfile();
+
       return {
-        level: 1,
-        currentXp: 0,
-        xpForNextLevel: getXpForLevel(1),
-        lifetimeXp: 0,
-        stats: INITIAL_STATS,
-        history: [],
-        completedDailyActivities: {},
-        lastProgressDate: undefined,
-        currentStreak: 0,
-        longestStreak: 0,
-        avatarId: DEFAULT_AVATAR_ID,
-        unlockedAvatarIds: INITIAL_UNLOCKED_AVATARS,
-        avatarFinalized: false,
+        ...projectProfile(initialProfile),
+        activeProfileId: DEFAULT_PROFILE_KEY,
+        profiles: { [DEFAULT_PROFILE_KEY]: initialProfile },
+
+        switchProfile: (userId?: string | null) => {
+          const key =
+            userId && userId.trim().length > 0
+              ? userId.trim()
+              : DEFAULT_PROFILE_KEY;
+          const profiles = get().profiles;
+          const profile = profiles[key] ?? createDefaultProfile();
+          set((state) => ({
+            activeProfileId: key,
+            profiles: { ...state.profiles, [key]: profile },
+            ...projectProfile(profile),
+          }));
+        },
 
         adjustStat: (key, amount) => {
-          const state = get();
-          const currentValue = state.stats[key] ?? 0;
-          const newValue = Math.max(0, currentValue + amount);
-          set({
-            stats: {
-              ...state.stats,
-              [key]: newValue,
-            },
+          let change: StatChange = { key, amount, newValue: 0 };
+          mutateActiveProfile((profile) => {
+            const currentValue = profile.stats[key] ?? 0;
+            const newValue = Math.max(0, currentValue + amount);
+            profile.stats = { ...profile.stats, [key]: newValue };
+            change = { key, amount, newValue };
+            return profile;
           });
-          return { key, amount, newValue };
+          return change;
         },
 
         awardTaskCompletion: (task) => {
@@ -370,7 +475,13 @@ export const useStatsStore = create<StatsState>()(
             statChanges.push(...tagResult.statChanges);
           }
           const xp = calculateTaskXp(task) + tagResult.xpBonus;
-          return recordGain(xp, task.title, "task", statChanges, tagResult.hypeText);
+          return recordGain(
+            xp,
+            task.title,
+            "task",
+            statChanges,
+            tagResult.hypeText
+          );
         },
 
         awardEventCompletion: (event) => {
@@ -400,11 +511,11 @@ export const useStatsStore = create<StatsState>()(
             statChanges.push(...tagResult.statChanges);
           }
 
-          const durationBonus = Math.min(
-            MAX_EVENT_XP_BONUS,
+          const baseXp = Math.max(
+            MIN_EVENT_XP,
             Math.round((durationMinutes / 60) * EVENT_XP_PER_HOUR)
           );
-          const xp = BASE_EVENT_XP + durationBonus + tagResult.xpBonus;
+          const xp = baseXp + tagResult.xpBonus;
           const label = event.title || "Kalendereintrag";
 
           return recordGain(
@@ -427,21 +538,30 @@ export const useStatsStore = create<StatsState>()(
             return null;
           }
 
-          const completed = get().completedDailyActivities[todayKey] ?? [];
+          const state = get();
+          const profileKey = state.activeProfileId ?? DEFAULT_PROFILE_KEY;
+          const profile = state.profiles[profileKey] ?? createDefaultProfile();
+          const completed = profile.completedDailyActivities[todayKey] ?? [];
           if (completed.includes(activityId)) {
             return null;
           }
 
-          const statChange = get().adjustStat(activity.statKey, activity.amount);
+          const statChange = state.adjustStat(activity.statKey, activity.amount);
 
           const updatedRecords = {
-            ...get().completedDailyActivities,
+            ...profile.completedDailyActivities,
             [todayKey]: [...completed, activityId],
           };
 
-          set({ completedDailyActivities: pruneDailyRecords(updatedRecords) });
+          mutateActiveProfile((current) => {
+            current.completedDailyActivities =
+              pruneDailyRecords(updatedRecords);
+            return current;
+          });
 
-          return recordGain(activity.xpReward, activity.label, "daily", [statChange]);
+          return recordGain(activity.xpReward, activity.label, "daily", [
+            statChange,
+          ]);
         },
 
         awardManualXp: (amount, label, statKey, statAmount = 0) => {
@@ -455,67 +575,118 @@ export const useStatsStore = create<StatsState>()(
 
         resetDailyCompletion: (date) => {
           if (!date) {
-            set({ completedDailyActivities: {} });
+            mutateActiveProfile((profile) => {
+              profile.completedDailyActivities = {};
+              return profile;
+            });
             return;
           }
           const key = formatDateKey(date);
-          const records = { ...get().completedDailyActivities };
-          delete records[key];
-          set({ completedDailyActivities: records });
+          mutateActiveProfile((profile) => {
+            const records = { ...profile.completedDailyActivities };
+            delete records[key];
+            profile.completedDailyActivities = records;
+            return profile;
+          });
         },
 
         setAvatar: (avatarId) => {
-          if (get().avatarFinalized) {
+          const state = get();
+          if (state.avatarFinalized) {
             return;
           }
           const exists = AVATAR_PRESETS.some((preset) => preset.id === avatarId);
           if (!exists) return;
-          const state = get();
+          const profileKey = state.activeProfileId ?? DEFAULT_PROFILE_KEY;
+          const profile = state.profiles[profileKey] ?? createDefaultProfile();
           if (
-            !state.unlockedAvatarIds.includes(avatarId) ||
-            state.avatarId === avatarId
+            !profile.unlockedAvatarIds.includes(avatarId) ||
+            profile.avatarId === avatarId
           ) {
             return;
           }
-          set({ avatarId });
+          mutateActiveProfile((current) => {
+            current.avatarId = avatarId;
+            return current;
+          });
         },
 
         finalizeAvatar: (avatarId) => {
           const exists = AVATAR_PRESETS.some((preset) => preset.id === avatarId);
           if (!exists) return;
           const state = get();
-          if (!state.unlockedAvatarIds.includes(avatarId)) {
+          const profileKey = state.activeProfileId ?? DEFAULT_PROFILE_KEY;
+          const profile = state.profiles[profileKey] ?? createDefaultProfile();
+          if (!profile.unlockedAvatarIds.includes(avatarId)) {
             return;
           }
-          set({ avatarId, avatarFinalized: true });
+          mutateActiveProfile((current) => {
+            current.avatarId = avatarId;
+            current.avatarFinalized = true;
+            return current;
+          });
         },
 
         unlockAvatar: (avatarId) => {
           const exists = AVATAR_PRESETS.some((preset) => preset.id === avatarId);
           if (!exists) return;
-          const state = get();
-          if (state.unlockedAvatarIds.includes(avatarId)) {
-            return;
-          }
-          set({
-            unlockedAvatarIds: [...state.unlockedAvatarIds, avatarId],
+          mutateActiveProfile((profile) => {
+            if (profile.unlockedAvatarIds.includes(avatarId)) {
+              return profile;
+            }
+            profile.unlockedAvatarIds = [
+              ...profile.unlockedAvatarIds,
+              avatarId,
+            ];
+            return profile;
           });
         },
-      };
-    },
+        };
+
+      },
     {
       name: "stats-store",
-      version: 3,
+      version: 4,
       migrate: async (persistedState, version) => {
         if (!persistedState || typeof persistedState !== "object") {
           return persistedState as StatsState;
         }
+
+        const draft = persistedState as Partial<StatsState> & {
+          profiles?: Record<string, StatsProfile>;
+        };
+
         if (version < 3) {
-          return {
-            avatarFinalized: false,
-            ...persistedState,
-          } as StatsState;
+          draft.avatarFinalized = draft.avatarFinalized ?? false;
         }
+
+        if (!draft.profiles) {
+          const profile = createDefaultProfile();
+          profile.level = draft.level ?? profile.level;
+          profile.currentXp = draft.currentXp ?? profile.currentXp;
+          profile.xpForNextLevel =
+            draft.xpForNextLevel ?? getXpForLevel(profile.level);
+          profile.lifetimeXp = draft.lifetimeXp ?? profile.lifetimeXp;
+          profile.stats = { ...INITIAL_STATS, ...(draft.stats ?? {}) };
+          profile.history = draft.history ?? [];
+          profile.completedDailyActivities =
+            draft.completedDailyActivities ?? {};
+          profile.lastProgressDate = draft.lastProgressDate ?? undefined;
+          profile.currentStreak = draft.currentStreak ?? profile.currentStreak;
+          profile.longestStreak = draft.longestStreak ?? profile.longestStreak;
+          profile.avatarId = draft.avatarId ?? profile.avatarId;
+          profile.unlockedAvatarIds =
+            draft.unlockedAvatarIds ?? [...profile.unlockedAvatarIds];
+          profile.avatarFinalized =
+            draft.avatarFinalized ?? profile.avatarFinalized;
+
+          return {
+            ...projectProfile(profile),
+            activeProfileId: DEFAULT_PROFILE_KEY,
+            profiles: { [DEFAULT_PROFILE_KEY]: profile },
+          } as unknown as StatsState;
+        }
+
         return persistedState as StatsState;
       },
     }

@@ -4,8 +4,17 @@ import { Prisma } from "@prisma/client";
 
 import { authenticateRequest } from "@/lib/auth/api-auth";
 import { getEvent } from "@/lib/calendar-db";
+import { newDate } from "@/lib/date-utils";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
+import {
+  buildEventMetadata,
+  CalendarTagMetadata,
+} from "@/lib/calendar-metadata";
+import {
+  createConditionalLearningEvents,
+  hasConditionalLearningFlag,
+} from "@/lib/conditional-learning";
 
 const LOG_SOURCE = "event-route";
 
@@ -95,14 +104,14 @@ export async function PATCH(
 
     const updates = await request.json();
 
-    let metadata:
-      | Prisma.NullableJsonNullValueInput
-      | Prisma.InputJsonValue
-      | undefined =
-      (existingEvent.metadata as Prisma.InputJsonValue | null) ?? undefined;
+    const metadataInput =
+      updates.metadata === null
+        ? null
+        : (updates.metadata as Prisma.InputJsonObject | undefined);
 
-    if (Array.isArray(updates.tagIds)) {
-      const tags = await prisma.tag.findMany({
+    let tags: CalendarTagMetadata[] | undefined;
+    if (Array.isArray(updates.tagIds) && updates.tagIds.length > 0) {
+      tags = await prisma.tag.findMany({
         where: {
           id: { in: updates.tagIds },
           userId,
@@ -113,24 +122,92 @@ export async function PATCH(
           color: true,
         },
       });
-
-      if (tags.length === 0) {
-        metadata = Prisma.JsonNull;
-      } else {
-        metadata = ({ tags } satisfies Prisma.JsonObject);
-      }
+    } else if (Array.isArray(updates.tagIds) && updates.tagIds.length === 0) {
+      tags = [];
     }
+
+    const metadataPayload = buildEventMetadata({
+      existing: existingEvent.metadata,
+      incoming: metadataInput ?? undefined,
+      tags,
+      feedType: existingEvent.feed.type,
+    });
+
+    const startDate =
+      updates.start !== undefined
+        ? newDate(updates.start)
+        : newDate(existingEvent.start);
+    const endDate =
+      updates.end !== undefined
+        ? newDate(updates.end)
+        : newDate(existingEvent.end ?? existingEvent.start);
+
+    if (metadataInput && hasConditionalLearningFlag(metadataInput)) {
+      const created = await prisma.$transaction(async (tx) => {
+        const events = await createConditionalLearningEvents({
+          prisma: tx,
+          userId,
+          feedId: existingEvent.feedId,
+          baseData: {
+            title: updates.title ?? existingEvent.title,
+            description: updates.description ?? existingEvent.description,
+            location: updates.location ?? existingEvent.location,
+            allDay:
+              updates.allDay !== undefined
+                ? updates.allDay
+                : existingEvent.allDay,
+            isRecurring:
+              updates.isRecurring !== undefined
+                ? updates.isRecurring
+                : existingEvent.isRecurring,
+            recurrenceRule:
+              updates.recurrenceRule ?? existingEvent.recurrenceRule,
+          },
+          start: startDate,
+          end: endDate,
+          metadata: metadataPayload ?? Prisma.JsonNull,
+          ignoreEventId: existingEvent.id,
+        });
+
+        await tx.calendarEvent.delete({ where: { id } });
+        return events;
+      });
+
+      if (created.length === 0) {
+        return NextResponse.json(
+          {
+            error:
+              "Kein freies Zeitfenster für diesen Lernblock gefunden. Bitte passe die Zeiten an.",
+          },
+          { status: 409 }
+        );
+      }
+
+      return NextResponse.json({ event: created[0], events: created });
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { metadata: _metadata, tagIds: _tagIds, ...rest } = updates;
 
     const updated = await prisma.calendarEvent.update({
       where: { id },
       data: {
-        ...updates,
-        tagIds: undefined,
-        metadata,
+        ...rest,
+        metadata: metadataPayload ?? { feedType: existingEvent.feed.type },
+      },
+      include: {
+        feed: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            type: true,
+          },
+        },
       },
     });
 
-    return NextResponse.json(updated);
+    return NextResponse.json({ event: updated, events: [updated] });
   } catch (error) {
     logger.error(
       "Failed to update event:",

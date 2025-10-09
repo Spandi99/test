@@ -468,13 +468,11 @@ export const TASK_KEYWORD_MAP: Array<{ patterns: RegExp[]; statKey: StatKey }> =
   },
 ];
 
-export const BASE_TASK_XP = 35;
-export const XP_PER_ESTIMATED_MINUTE = 0.2;
-export const MAX_TASK_XP_BONUS = 40;
+export const TASK_XP_PER_HOUR = 60;
+export const MIN_TASK_XP = 20;
 
-export const BASE_EVENT_XP = 25;
-export const EVENT_XP_PER_HOUR = 18;
-export const MAX_EVENT_XP_BONUS = 45;
+export const EVENT_XP_PER_HOUR = 45;
+export const MIN_EVENT_XP = 25;
 
 export function getXpForLevel(level: number): number {
   return 120 + (level - 1) * 45;

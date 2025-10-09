@@ -62,7 +62,7 @@ export function MonthView({ currentDate, onDateClick }: MonthViewProps) {
         return feed?.enabled;
       });
 
-      const formattedItems = buildCalendarDisplayEvents(enabledItems, feeds);
+      const formattedItems = buildCalendarDisplayEvents(enabledItems);
       setEvents(formattedItems);
     },
     [feeds, getAllCalendarItems]

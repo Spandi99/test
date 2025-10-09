@@ -63,7 +63,7 @@ export function WeekView({ currentDate, onDateClick }: WeekViewProps) {
         return feed?.enabled;
       });
 
-      const formattedItems = buildCalendarDisplayEvents(enabledItems, feeds);
+      const formattedItems = buildCalendarDisplayEvents(enabledItems);
       setEvents(formattedItems);
     },
     [feeds, getAllCalendarItems]

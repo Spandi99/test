@@ -1,10 +1,6 @@
 import { newDate } from "@/lib/date-utils";
 
-import {
-  CalendarEvent,
-  CalendarFeed,
-  EventFlag,
-} from "@/types/calendar";
+import { CalendarEvent, EventFlag } from "@/types/calendar";
 
 const DEFAULT_EVENT_COLOR = "#3b82f6";
 const MIN_SEGMENT_MINUTES = 15;
@@ -116,10 +112,7 @@ function splitConditionalEvent(
   );
 }
 
-function resolveAccentColor(
-  event: CalendarEvent,
-  feeds: CalendarFeed[]
-): string {
+function resolveAccentColor(event: CalendarEvent): string {
   const metadataTags = Array.isArray(event.metadata?.tags)
     ? event.metadata?.tags
     : [];
@@ -132,10 +125,6 @@ function resolveAccentColor(
   }
   if (event.color) {
     return event.color;
-  }
-  const feed = feeds.find((f) => f.id === event.feedId);
-  if (feed?.color) {
-    return feed.color;
   }
   return DEFAULT_EVENT_COLOR;
 }
@@ -161,12 +150,11 @@ function buildTaskDisplayEvent(task: CalendarEvent): CalendarDisplayEvent {
 
 function buildEventSegmentDisplay(
   event: CalendarEvent,
-  feeds: CalendarFeed[],
   segment: Segment,
   index: number,
   totalSegments: number
 ): CalendarDisplayEvent {
-  const accent = resolveAccentColor(event, feeds);
+  const accent = resolveAccentColor(event);
   const segmentId = totalSegments > 1 ? `${event.id}::${index}` : event.id;
   return {
     id: segmentId,
@@ -189,8 +177,7 @@ function buildEventSegmentDisplay(
 }
 
 export function buildCalendarDisplayEvents(
-  items: CalendarEvent[],
-  feeds: CalendarFeed[]
+  items: CalendarEvent[]
 ): CalendarDisplayEvent[] {
   const results: CalendarDisplayEvent[] = [];
   const blockers = items.filter((item) => isFixedEvent(item));
@@ -208,7 +195,7 @@ export function buildCalendarDisplayEvents(
 
     segments.forEach((segment, index) => {
       results.push(
-        buildEventSegmentDisplay(item, feeds, segment, index, segments.length)
+        buildEventSegmentDisplay(item, segment, index, segments.length)
       );
     });
   });

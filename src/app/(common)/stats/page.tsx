@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { useSession } from "next-auth/react";
+
 import {
   AVATAR_PRESETS,
   DAILY_ACTIVITIES,
@@ -44,7 +46,13 @@ export default function StatsPage() {
     avatarFinalized,
     finalizeAvatar,
     completeDailyActivity,
+    switchProfile,
   } = useStatsStore((state) => state);
+  const { data: session } = useSession();
+
+  useEffect(() => {
+    switchProfile(session?.user?.id ?? undefined);
+  }, [session?.user?.id, switchProfile]);
 
   const today = newDate();
   const weekdayKey = getWeekdayKey(today);
@@ -179,7 +187,7 @@ export default function StatsPage() {
                             onClick={() => handleSelectAvatar(preset.id)}
                             disabled={!isUnlocked}
                             className={cn(
-                              "group flex flex-col items-start gap-3 rounded-xl border border-white/10 bg-white/5 p-3 text-left transition sm:flex-row sm:items-center",
+                              "group flex w-full flex-col items-start gap-3 rounded-xl border border-white/10 bg-white/5 p-3 text-left transition sm:flex-row sm:items-center",
                               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400",
                               isActive && "border-sky-300/70 bg-sky-500/10 shadow-lg",
                               !isUnlocked && "cursor-not-allowed opacity-50"
@@ -193,17 +201,19 @@ export default function StatsPage() {
                             >
                               <span aria-hidden>{STAT_DEFINITIONS[dominantStat].emoji}</span>
                             </div>
-                            <div className="flex flex-1 flex-col text-sm sm:text-base">
-                              <span className="text-sm font-semibold text-white">
-                                {preset.label}
-                              </span>
-                              <span className="text-xs text-slate-200/80">
-                                {preset.description}
-                              </span>
-                            </div>
-                            {isActive && (
-                              <span className="text-xs text-sky-300">Gewählt</span>
-                            )}
+                              <div className="flex flex-1 flex-col whitespace-normal break-words text-left text-sm leading-relaxed sm:text-base">
+                                <span className="text-sm font-semibold leading-tight text-white">
+                                  {preset.label}
+                                </span>
+                                <span className="mt-1 text-xs leading-snug text-slate-200/80 sm:text-sm">
+                                  {preset.description}
+                                </span>
+                              </div>
+                              {isActive && (
+                                <span className="self-start rounded-full bg-sky-500/10 px-2 py-1 text-xs font-semibold text-sky-300">
+                                  Gewählt
+                                </span>
+                              )}
                           </button>
                         );
                       })}

@@ -19,6 +19,16 @@ const EYE_STYLE = {
   highlight: "bg-white/80",
 };
 
+function getEvolutionStage(level: number): 1 | 2 | 3 {
+  if (level >= 15) {
+    return 3;
+  }
+  if (level >= 7) {
+    return 2;
+  }
+  return 1;
+}
+
 function renderHair(style: AvatarOption["layers"]["hairStyle"], color: string) {
   switch (style) {
     case "undercut":
@@ -175,6 +185,49 @@ function renderCompanion(companion: AvatarOption["layers"]["companion"], accentC
   }
 }
 
+function renderEvolution(stage: number, accentColor: string) {
+  if (stage <= 1) {
+    return null;
+  }
+
+  return (
+    <>
+      {stage >= 2 && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div
+            className="h-48 w-48 rounded-full border border-white/20 opacity-70"
+            style={{ boxShadow: `0 0 55px ${accentColor}66` }}
+          />
+        </div>
+      )}
+      {stage >= 2 && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div
+            className="h-60 w-60 animate-[spin_14s_linear_infinite] rounded-full border border-white/10"
+            style={{ boxShadow: `0 0 45px ${accentColor}33` }}
+          />
+        </div>
+      )}
+      {stage >= 3 && (
+        <div className="absolute -top-10 flex w-full justify-center">
+          <div className="flex h-12 w-28 items-center justify-center rounded-full border-2 border-amber-200/70 bg-gradient-to-r from-amber-200/70 via-amber-400/40 to-transparent text-amber-100 shadow-[0_12px_35px_-10px_rgba(251,191,36,0.65)]">
+            ✶
+          </div>
+        </div>
+      )}
+      {stage >= 2 && (
+        <div className="absolute -bottom-6 left-1/2 h-20 w-40 -translate-x-1/2 rounded-full bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-70 blur-lg" />
+      )}
+      {stage >= 3 && (
+        <>
+          <div className="absolute -left-8 top-16 h-10 w-10 rounded-full border border-white/40 bg-white/10 opacity-70 shadow-[0_0_30px_rgba(255,255,255,0.4)]" />
+          <div className="absolute -right-8 top-20 h-10 w-10 rounded-full border border-white/40 bg-white/10 opacity-70 shadow-[0_0_30px_rgba(255,255,255,0.4)]" />
+        </>
+      )}
+    </>
+  );
+}
+
 export const StatsAvatar = memo(function StatsAvatar({
   avatar,
   dominantStat,
@@ -183,6 +236,8 @@ export const StatsAvatar = memo(function StatsAvatar({
 }: StatsAvatarProps) {
   const definition = STAT_DEFINITIONS[dominantStat];
   const streakLabel = streak > 0 ? `${streak} Tage` : "Bereit für den Start";
+  const stage = getEvolutionStage(level);
+  const accentColor = avatar.layers.accentColor;
 
   return (
     <div className="relative flex w-full max-w-[13rem] flex-col items-center text-white sm:max-w-[16rem]">
@@ -194,6 +249,15 @@ export const StatsAvatar = memo(function StatsAvatar({
             avatar.layers.aura ?? "from-primary/30 via-primary/5 to-transparent"
           )}
         />
+        {stage >= 2 && (
+          <div
+            className="absolute h-72 w-72 rounded-full border border-white/10"
+            style={{ boxShadow: `0 0 120px ${accentColor}55` }}
+          />
+        )}
+        {stage >= 3 && (
+          <div className="absolute h-80 w-80 animate-[spin_20s_linear_infinite] rounded-full border border-amber-200/40" />
+        )}
       </div>
 
       <div
@@ -206,6 +270,7 @@ export const StatsAvatar = memo(function StatsAvatar({
         <div className="relative flex w-full flex-col items-center gap-6 text-center">
           <div className="relative flex w-full justify-center">
             <div className="relative flex h-48 w-32 flex-col items-center justify-start">
+              {renderEvolution(stage, accentColor)}
               {renderCompanion(avatar.layers.companion, avatar.layers.accentColor)}
               {renderHair(avatar.layers.hairStyle, avatar.layers.hairColor)}
               <div
@@ -240,7 +305,10 @@ export const StatsAvatar = memo(function StatsAvatar({
                 style={{ backgroundColor: avatar.layers.outfitColor }}
               />
               <div
-                className="absolute bottom-6 h-4 w-24 rounded-full opacity-90"
+                className={cn(
+                  "absolute bottom-6 h-4 w-24 rounded-full opacity-90",
+                  stage >= 2 && "animate-pulse"
+                )}
                 style={{ backgroundColor: avatar.layers.accentColor }}
               />
               {avatar.layers.outfitAccent === "cloak" && (
